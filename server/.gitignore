@@ -12,9 +12,8 @@ pnpm-lock.yaml
 
 # Build outputs
 dist/
-dist-ssr/
-*.local
 build/
+*.tsbuildinfo
 
 # Logs
 logs/
@@ -61,4 +60,20 @@ jest.config.js
 
 # IDE specific
 .eslintcache
-.cache/
+
+# Uploads & Media
+uploads/
+public/uploads/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE & Debugging
+.vscode/
+.env.test
+debugOutput/
+
+# Node.js
+*.code-workspace

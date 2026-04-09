@@ -63,12 +63,6 @@ app.get('/', (req, res) => {
   res.json({ success: true, message: 'Fwtion LMS API is running' });
 });
 
-// ── DEBUG: List all users (remove after testing) ──
-app.get('/api/debug/users', async (req, res) => {
-  const users = await User.find({}, 'email role name');
-  res.json(users);
-});
-
 // ── 404 Handler ──
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });

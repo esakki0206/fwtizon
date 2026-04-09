@@ -84,6 +84,12 @@ app.use((err, req, res, _next) => {
   });
 });
 
+// ── DEBUG: List all users (remove after testing) ──
+app.get('/api/debug/users', async (req, res) => {
+  const users = await User.find({}, 'email role name');
+  res.json(users);
+});
+
 // ── Start Server ──
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

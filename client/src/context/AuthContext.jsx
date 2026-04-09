@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const loadUserInProgressRef = useRef(false);
 
   // Configure axios defaults
+  axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   axios.defaults.withCredentials = true;
 
   // ── Axios interceptor: auto-refresh on 401 TOKEN_EXPIRED ──

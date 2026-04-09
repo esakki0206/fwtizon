@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import connectDB from './config/db.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import User from './models/User.js';
 
 // Connect to database
 connectDB();
@@ -62,6 +63,12 @@ app.get('/', (req, res) => {
   res.json({ success: true, message: 'Fwtion LMS API is running' });
 });
 
+// ── DEBUG: List all users (remove after testing) ──
+app.get('/api/debug/users', async (req, res) => {
+  const users = await User.find({}, 'email role name');
+  res.json(users);
+});
+
 // ── 404 Handler ──
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
@@ -82,12 +89,6 @@ app.use((err, req, res, _next) => {
     message: err.message || 'Internal Server Error',
     stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
   });
-});
-
-// ── DEBUG: List all users (remove after testing) ──
-app.get('/api/debug/users', async (req, res) => {
-  const users = await User.find({}, 'email role name');
-  res.json(users);
 });
 
 // ── Start Server ──

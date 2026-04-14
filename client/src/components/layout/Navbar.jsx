@@ -116,8 +116,6 @@ const Navbar = () => {
               Live Cohorts
             </Link>
 
-
-
             {user && (
               <Link
                 to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'}

@@ -43,6 +43,9 @@ const userSchema = new mongoose.Schema({
     enum: ['active', 'suspended'],
     default: 'active',
   },
+  lastLogin: {
+    type: Date,
+  },
   refreshToken: {
     type: String,
     select: false,

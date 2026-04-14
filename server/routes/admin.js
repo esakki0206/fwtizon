@@ -28,17 +28,36 @@ const csvEscape = (value) => {
   return str;
 };
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Calculate percentage change between current and previous values.
+ * Returns 0 if previous is 0 to avoid division by zero.
+ */
+const percentChange = (current, previous) => {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+};
+
 // ==============================
-// DASHBOARD ANALYTICS
+// DASHBOARD ANALYTICS (Enhanced)
 // ==============================
 
 /**
- * @desc    Get global dashboard analytics
+ * @desc    Get enhanced dashboard analytics with period comparisons
  * @route   GET /api/admin/analytics
  * @access  Private/Admin
  */
 router.get('/analytics', protect, authorize('admin'), async (req, res) => {
   try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart); weekStart.setDate(weekStart.getDate() - 7);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+    // ── Core counts ──
     const [
       totalCourses,
       totalStudents,
@@ -48,70 +67,133 @@ router.get('/analytics', protect, authorize('admin'), async (req, res) => {
       totalAssignmentSubmissions,
     ] = await Promise.all([
       Course.countDocuments(),
-      User.countDocuments({ role: 'student' }),
+      User.countDocuments({ role: { $ne: 'admin' } }),
       Enrollment.countDocuments({ status: 'active' }),
       LiveCourse.countDocuments(),
       Assignment.countDocuments(),
       AssignmentSubmission.countDocuments(),
     ]);
 
-    // Revenue aggregation
-    const revenueAggregation = await Enrollment.aggregate([
-      { $match: { status: { $in: ['active', 'completed'] } } },
-      { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
+    // ── New registrations breakdown ──
+    const [newToday, newThisWeek, newThisMonth] = await Promise.all([
+      User.countDocuments({ role: { $ne: 'admin' }, createdAt: { $gte: todayStart } }),
+      User.countDocuments({ role: { $ne: 'admin' }, createdAt: { $gte: weekStart } }),
+      User.countDocuments({ role: { $ne: 'admin' }, createdAt: { $gte: monthStart } }),
     ]);
 
-    const totalRevenue = revenueAggregation.length > 0 ? revenueAggregation[0].totalRevenue : 0;
+    // ── Active users (logged in recently) ──
+    const [activeToday, activeThisWeek, activeThisMonth] = await Promise.all([
+      User.countDocuments({ role: { $ne: 'admin' }, lastLogin: { $gte: todayStart } }),
+      User.countDocuments({ role: { $ne: 'admin' }, lastLogin: { $gte: weekStart } }),
+      User.countDocuments({ role: { $ne: 'admin' }, lastLogin: { $gte: monthStart } }),
+    ]);
 
-    // Quiz submission count from enrollment quiz scores
+    // ── Previous period counts for comparison ──
+    const [prevMonthStudents, prevMonthEnrollments] = await Promise.all([
+      User.countDocuments({ role: { $ne: 'admin' }, createdAt: { $gte: prevMonthStart, $lte: prevMonthEnd } }),
+      Enrollment.countDocuments({ status: 'active', createdAt: { $gte: prevMonthStart, $lte: prevMonthEnd } }),
+    ]);
+
+    // ── Revenue ──
+    const [currentRevenueAgg, prevRevenueAgg] = await Promise.all([
+      Enrollment.aggregate([
+        { $match: { status: { $in: ['active', 'completed'] } } },
+        { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
+      ]),
+      Enrollment.aggregate([
+        { $match: { status: { $in: ['active', 'completed'] }, createdAt: { $gte: prevMonthStart, $lte: prevMonthEnd } } },
+        { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
+      ]),
+    ]);
+
+    const totalRevenue = currentRevenueAgg.length > 0 ? currentRevenueAgg[0].totalRevenue : 0;
+    const prevRevenue = prevRevenueAgg.length > 0 ? prevRevenueAgg[0].totalRevenue : 0;
+
+    // ── This month revenue for comparison ──
+    const thisMonthRevenueAgg = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] }, createdAt: { $gte: monthStart } } },
+      { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
+    ]);
+    const thisMonthRevenue = thisMonthRevenueAgg.length > 0 ? thisMonthRevenueAgg[0].totalRevenue : 0;
+
+    // ── Quiz submission count ──
     const quizSubmissionAgg = await Enrollment.aggregate([
       { $unwind: '$progress.quizScores' },
       { $group: { _id: null, total: { $sum: '$progress.quizScores.attempts' } } },
     ]);
     const totalQuizSubmissions = quizSubmissionAgg.length > 0 ? quizSubmissionAgg[0].total : 0;
 
-    // Course category distribution
+    // ── Category distribution ──
     const categoryDistribution = await Course.aggregate([
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
     ]);
 
-    // Monthly revenue (derived from enrollment dates)
+    // ── Monthly revenue (real data) ──
     const monthlyRevenue = await Enrollment.aggregate([
       { $match: { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 } } },
       {
         $group: {
-          _id: { $month: '$createdAt' },
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
           revenue: { $sum: '$amount' },
+          count: { $sum: 1 },
         },
       },
-      { $sort: { _id: 1 } },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+      { $limit: 12 },
     ]);
 
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const formattedMonthlyRevenue = monthlyRevenue.map(item => ({
-      month: monthNames[item._id - 1],
+      month: MONTH_NAMES[item._id.month - 1],
+      year: item._id.year,
       revenue: item.revenue,
+      enrollments: item.count,
     }));
 
-    // Fallback: if no real monthly data, generate proportional mock
-    const finalMonthlyRevenue = formattedMonthlyRevenue.length > 0
-      ? formattedMonthlyRevenue
-      : [
-          { month: 'Jan', revenue: Math.round(totalRevenue * 0.1) },
-          { month: 'Feb', revenue: Math.round(totalRevenue * 0.15) },
-          { month: 'Mar', revenue: Math.round(totalRevenue * 0.2) },
-          { month: 'Apr', revenue: Math.round(totalRevenue * 0.12) },
-          { month: 'May', revenue: Math.round(totalRevenue * 0.28) },
-          { month: 'Jun', revenue: Math.round(totalRevenue * 0.15) },
-        ];
+    // ── Monthly enrollments (real data) ──
+    const monthlyEnrollments = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] } } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+      { $limit: 12 },
+    ]);
 
-    // Course completion rate (percentage)
+    const formattedMonthlyEnrollments = monthlyEnrollments.map(item => ({
+      month: MONTH_NAMES[item._id.month - 1],
+      year: item._id.year,
+      students: item.count,
+    }));
+
+    // ── Completion rate ──
     const completedEnrollments = await Enrollment.countDocuments({ status: 'completed' });
     const allEnrollments = await Enrollment.countDocuments();
     const completionRate = allEnrollments > 0
       ? Math.round((completedEnrollments / allEnrollments) * 1000) / 10
       : 0;
+
+    // ── Period comparisons ──
+    const trends = {
+      students: percentChange(newThisMonth, prevMonthStudents),
+      revenue: percentChange(thisMonthRevenue, prevRevenue),
+      enrollments: percentChange(
+        await Enrollment.countDocuments({ status: 'active', createdAt: { $gte: monthStart } }),
+        prevMonthEnrollments
+      ),
+    };
+
+    // ── System health ──
+    const systemHealth = {
+      status: 'operational',
+      database: 'connected',
+      uptime: process.uptime(),
+      memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      totalMemory: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+    };
 
     res.status(200).json({
       success: true,
@@ -125,18 +207,538 @@ router.get('/analytics', protect, authorize('admin'), async (req, res) => {
         totalAssignmentSubmissions,
         totalQuizSubmissions,
         completionRate,
+        newRegistrations: { today: newToday, week: newThisWeek, month: newThisMonth },
+        activeUsers: { today: activeToday, week: activeThisWeek, month: activeThisMonth },
+        trends,
+        systemHealth,
         categoryDistribution,
-        monthlyRevenue: finalMonthlyRevenue,
+        monthlyRevenue: formattedMonthlyRevenue,
+        monthlyEnrollments: formattedMonthlyEnrollments,
       },
     });
+  } catch (error) {
+    console.error('Analytics error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// ADVANCED ANALYTICS
+// ==============================
+
+/**
+ * @desc    Get advanced analytics with date range filtering
+ * @route   GET /api/admin/analytics/advanced
+ * @query   from, to (ISO date strings)
+ * @access  Private/Admin
+ */
+router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) => {
+  try {
+    const now = new Date();
+    const from = req.query.from ? new Date(req.query.from) : new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const to = req.query.to ? new Date(req.query.to) : now;
+    to.setHours(23, 59, 59, 999);
+
+    const dateFilter = { $gte: from, $lte: to };
+
+    // ── User growth (monthly registrations) ──
+    const userGrowth = await User.aggregate([
+      { $match: { role: { $ne: 'admin' }, createdAt: dateFilter } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const formattedUserGrowth = userGrowth.map(item => ({
+      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
+      shortMonth: MONTH_NAMES[item._id.month - 1],
+      users: item.count,
+    }));
+
+    // ── Daily active users (last 30 days) ──
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const dailyActiveUsers = await User.aggregate([
+      { $match: { role: { $ne: 'admin' }, lastLogin: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$lastLogin' },
+            month: { $month: '$lastLogin' },
+            day: { $dayOfMonth: '$lastLogin' },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+    ]);
+
+    const formattedDAU = dailyActiveUsers.map(item => ({
+      date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`,
+      label: `${MONTH_NAMES[item._id.month - 1]} ${item._id.day}`,
+      users: item.count,
+    }));
+
+    // ── Login frequency (hourly distribution) ──
+    const loginFrequency = await User.aggregate([
+      { $match: { lastLogin: { $exists: true } } },
+      {
+        $group: {
+          _id: { $hour: '$lastLogin' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const formattedLoginFreq = loginFrequency.map(item => ({
+      hour: `${String(item._id).padStart(2, '0')}:00`,
+      logins: item.count,
+    }));
+
+    // ── Peak usage hours ──
+    const peakHour = loginFrequency.length > 0
+      ? loginFrequency.reduce((max, item) => item.count > max.count ? item : max, { count: 0 })
+      : null;
+
+    // ── Course enrollment trends ──
+    const enrollmentTrends = await Enrollment.aggregate([
+      { $match: { createdAt: dateFilter } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          count: { $sum: 1 },
+          revenue: { $sum: '$amount' },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const formattedEnrollmentTrends = enrollmentTrends.map(item => ({
+      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
+      shortMonth: MONTH_NAMES[item._id.month - 1],
+      enrollments: item.count,
+      revenue: item.revenue || 0,
+    }));
+
+    // ── Revenue by period ──
+    const revenueByPeriod = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 }, createdAt: dateFilter } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          revenue: { $sum: '$amount' },
+          transactions: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const formattedRevenue = revenueByPeriod.map(item => ({
+      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
+      shortMonth: MONTH_NAMES[item._id.month - 1],
+      revenue: item.revenue,
+      transactions: item.transactions,
+    }));
+
+    // ── Retention / churn ──
+    const totalUsers = await User.countDocuments({ role: { $ne: 'admin' } });
+    const activeUsersMonth = await User.countDocuments({
+      role: { $ne: 'admin' },
+      lastLogin: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) },
+    });
+    const retentionRate = totalUsers > 0 ? Math.round((activeUsersMonth / totalUsers) * 1000) / 10 : 0;
+    const churnRate = Math.round((100 - retentionRate) * 10) / 10;
+
+    // ── Most active users ──
+    const mostActiveUsers = await Enrollment.aggregate([
+      { $group: { _id: '$user', enrollmentCount: { $sum: 1 } } },
+      { $sort: { enrollmentCount: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userInfo',
+        },
+      },
+      { $unwind: '$userInfo' },
+      {
+        $project: {
+          _id: '$userInfo._id',
+          name: '$userInfo.name',
+          email: '$userInfo.email',
+          avatar: '$userInfo.avatar',
+          enrollmentCount: 1,
+        },
+      },
+    ]);
+
+    // ── Most popular courses ──
+    const mostPopularCourses = await Enrollment.aggregate([
+      { $match: { course: { $exists: true, $ne: null } } },
+      { $group: { _id: '$course', enrollmentCount: { $sum: 1 }, revenue: { $sum: '$amount' } } },
+      { $sort: { enrollmentCount: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: 'courses',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'courseInfo',
+        },
+      },
+      { $unwind: '$courseInfo' },
+      {
+        $project: {
+          _id: '$courseInfo._id',
+          title: '$courseInfo.title',
+          thumbnail: '$courseInfo.thumbnail',
+          enrollmentCount: 1,
+          revenue: 1,
+        },
+      },
+    ]);
+
+    // ── Average revenue per user ──
+    const totalRevenueAgg = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const avgRevenuePerUser = totalUsers > 0
+      ? Math.round((totalRevenueAgg[0]?.total || 0) / totalUsers)
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        userGrowth: formattedUserGrowth,
+        dailyActiveUsers: formattedDAU,
+        loginFrequency: formattedLoginFreq,
+        enrollmentTrends: formattedEnrollmentTrends,
+        revenueByPeriod: formattedRevenue,
+        retentionRate,
+        churnRate,
+        avgRevenuePerUser,
+        peakHour: peakHour ? `${String(peakHour._id).padStart(2, '0')}:00` : 'N/A',
+        mostActiveUsers,
+        mostPopularCourses,
+      },
+    });
+  } catch (error) {
+    console.error('Advanced analytics error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// ACTIVITY FEED
+// ==============================
+
+/**
+ * @desc    Get admin activity feed (latest actions across all models)
+ * @route   GET /api/admin/activity-feed
+ * @query   page, limit
+ * @access  Private/Admin
+ */
+router.get('/activity-feed', protect, authorize('admin'), async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+
+    // Gather recent activities from multiple models in parallel
+    const [recentUsers, recentEnrollments, recentCourses, recentReviews] = await Promise.all([
+      User.find({ role: { $ne: 'admin' } })
+        .select('name email avatar createdAt lastLogin')
+        .sort('-createdAt')
+        .limit(30)
+        .lean(),
+      Enrollment.find()
+        .populate('user', 'name email avatar')
+        .populate('course', 'title')
+        .populate('liveCourse', 'title')
+        .sort('-createdAt')
+        .limit(30)
+        .lean(),
+      Course.find()
+        .select('title createdAt updatedAt')
+        .sort('-createdAt')
+        .limit(10)
+        .lean(),
+      Review.find()
+        .populate('user', 'name avatar')
+        .populate('course', 'title')
+        .sort('-createdAt')
+        .limit(10)
+        .lean(),
+    ]);
+
+    // Normalize into a unified activity format
+    const activities = [];
+
+    recentUsers.forEach(u => {
+      activities.push({
+        id: `reg-${u._id}`,
+        type: 'registration',
+        message: `${u.name} registered a new account`,
+        user: { name: u.name, email: u.email, avatar: u.avatar },
+        timestamp: u.createdAt,
+      });
+      if (u.lastLogin && u.lastLogin > u.createdAt) {
+        activities.push({
+          id: `login-${u._id}`,
+          type: 'login',
+          message: `${u.name} logged in`,
+          user: { name: u.name, email: u.email, avatar: u.avatar },
+          timestamp: u.lastLogin,
+        });
+      }
+    });
+
+    recentEnrollments.forEach(e => {
+      const courseName = e.course?.title || e.liveCourse?.title || 'Unknown';
+      const userName = e.user?.name || e.fullName || 'Unknown';
+      activities.push({
+        id: `enroll-${e._id}`,
+        type: 'enrollment',
+        message: `${userName} enrolled in "${courseName}"`,
+        user: e.user ? { name: e.user.name, avatar: e.user.avatar } : null,
+        timestamp: e.createdAt,
+        meta: { amount: e.amount },
+      });
+    });
+
+    recentCourses.forEach(c => {
+      activities.push({
+        id: `course-${c._id}`,
+        type: 'course_created',
+        message: `Course "${c.title}" was created`,
+        timestamp: c.createdAt,
+      });
+    });
+
+    recentReviews.forEach(r => {
+      activities.push({
+        id: `review-${r._id}`,
+        type: 'review',
+        message: `${r.user?.name || 'User'} left a review on "${r.course?.title || 'a course'}"`,
+        user: r.user ? { name: r.user.name, avatar: r.user.avatar } : null,
+        timestamp: r.createdAt,
+      });
+    });
+
+    // Sort by timestamp descending, paginate
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const total = activities.length;
+    const paginated = activities.slice((page - 1) * limit, page * limit);
+
+    res.status(200).json({
+      success: true,
+      count: paginated.length,
+      total,
+      page,
+      totalPages: Math.max(Math.ceil(total / limit), 1),
+      data: paginated,
+    });
+  } catch (error) {
+    console.error('Activity feed error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// ADMIN NOTIFICATIONS
+// ==============================
+
+/**
+ * @desc    Get admin-level notifications
+ * @route   GET /api/admin/admin-notifications
+ * @access  Private/Admin
+ */
+router.get('/admin-notifications', protect, authorize('admin'), async (req, res) => {
+  try {
+    // Fetch notifications for this admin user
+    const notifications = await Notification.find({ user: req.user.id })
+      .sort('-createdAt')
+      .limit(50)
+      .lean();
+
+    // Also generate system-level alerts dynamically
+    const systemAlerts = [];
+
+    // Check for registration spikes (more than 10 new users today)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const newTodayCount = await User.countDocuments({ createdAt: { $gte: todayStart } });
+    if (newTodayCount > 10) {
+      systemAlerts.push({
+        _id: 'alert-reg-spike',
+        type: 'warning',
+        message: `Registration spike detected: ${newTodayCount} new users today`,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
+
+    // Check system memory
+    const memUsage = process.memoryUsage();
+    const usedPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+    if (usedPercent > 85) {
+      systemAlerts.push({
+        _id: 'alert-memory',
+        type: 'danger',
+        message: `High memory usage: ${usedPercent}% heap utilized`,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
+
+    // Combine notifications with system alerts
+    const allNotifications = [...systemAlerts, ...notifications].slice(0, 50);
+
+    res.status(200).json({
+      success: true,
+      count: allNotifications.length,
+      unreadCount: allNotifications.filter(n => !n.isRead).length,
+      data: allNotifications,
+    });
+  } catch (error) {
+    console.error('Admin notifications error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Mark admin notification as read
+ * @route   PATCH /api/admin/admin-notifications/:id/read
+ * @access  Private/Admin
+ */
+router.patch('/admin-notifications/:id/read', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(200).json({ success: true, message: 'System alert acknowledged' });
+    }
+
+    const notification = await Notification.findByIdAndUpdate(id, { isRead: true }, { new: true });
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
+    res.status(200).json({ success: true, data: notification });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // ==============================
-// USERS
+// ANALYTICS EXPORT (CSV only)
 // ==============================
+
+/**
+ * @desc    Export analytics data as CSV
+ * @route   GET /api/admin/analytics/export
+ * @query   type (users|enrollments|revenue), from, to
+ * @access  Private/Admin
+ */
+router.get('/analytics/export', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { type = 'users' } = req.query;
+    const from = req.query.from ? new Date(req.query.from) : null;
+    const to = req.query.to ? new Date(req.query.to) : null;
+
+    let headers, rows;
+    const dateFilter = {};
+    if (from) dateFilter.$gte = from;
+    if (to) { to.setHours(23, 59, 59, 999); dateFilter.$lte = to; }
+    const hasDateFilter = Object.keys(dateFilter).length > 0;
+
+    if (type === 'users') {
+      const filter = { role: { $ne: 'admin' } };
+      if (hasDateFilter) filter.createdAt = dateFilter;
+
+      const users = await User.find(filter)
+        .select('-password -refreshToken -resetPasswordToken -resetPasswordExpire')
+        .sort('-createdAt')
+        .lean();
+
+      headers = ['Name', 'Email', 'Role', 'Status', 'Last Login', 'Joined'];
+      rows = users.map(u => [
+        csvEscape(u.name),
+        csvEscape(u.email),
+        csvEscape(u.role),
+        csvEscape(u.status || 'active'),
+        csvEscape(u.lastLogin ? new Date(u.lastLogin).toISOString() : ''),
+        csvEscape(u.createdAt ? new Date(u.createdAt).toISOString() : ''),
+      ].join(','));
+
+    } else if (type === 'enrollments') {
+      const filter = {};
+      if (hasDateFilter) filter.createdAt = dateFilter;
+
+      const enrollments = await Enrollment.find(filter)
+        .populate('user', 'name email')
+        .populate('course', 'title price')
+        .populate('liveCourse', 'title price')
+        .sort('-createdAt')
+        .lean();
+
+      headers = ['Student', 'Email', 'Course', 'Type', 'Amount', 'Status', 'Date'];
+      rows = enrollments.map(e => [
+        csvEscape(e.user?.name || e.fullName || ''),
+        csvEscape(e.user?.email || e.email || ''),
+        csvEscape(e.course?.title || e.liveCourse?.title || ''),
+        csvEscape(e.course ? 'Course' : 'Live Course'),
+        csvEscape(e.amount || 0),
+        csvEscape(e.status),
+        csvEscape(e.createdAt ? new Date(e.createdAt).toISOString() : ''),
+      ].join(','));
+
+    } else if (type === 'revenue') {
+      const filter = { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 } };
+      if (hasDateFilter) filter.createdAt = dateFilter;
+
+      const payments = await Enrollment.find(filter)
+        .populate('user', 'name email')
+        .populate('course', 'title')
+        .populate('liveCourse', 'title')
+        .sort('-createdAt')
+        .lean();
+
+      headers = ['Student', 'Email', 'Course', 'Amount', 'Payment ID', 'Status', 'Date'];
+      rows = payments.map(p => [
+        csvEscape(p.user?.name || ''),
+        csvEscape(p.user?.email || ''),
+        csvEscape(p.course?.title || p.liveCourse?.title || ''),
+        csvEscape(p.amount),
+        csvEscape(p.paymentId || ''),
+        csvEscape(p.status),
+        csvEscape(p.createdAt ? new Date(p.createdAt).toISOString() : ''),
+      ].join(','));
+
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid export type. Use: users, enrollments, revenue' });
+    }
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${type}-export-${Date.now()}.csv"`);
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ success: false, message: 'Failed to export data' });
+  }
+});
+
+// ============================================================
+// USERS (legacy)
+// ============================================================
 
 /**
  * @desc    Get all users (non-admin)

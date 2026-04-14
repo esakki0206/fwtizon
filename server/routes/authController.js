@@ -17,8 +17,9 @@ const sendTokenResponse = async (user, statusCode, res) => {
   const accessToken = user.getSignedJwtToken();
   const refreshToken = user.getRefreshToken();
 
-  // Persist refresh token in DB
+  // Persist refresh token and update lastLogin
   user.refreshToken = refreshToken;
+  user.lastLogin = new Date();
   await user.save({ validateBeforeSave: false });
 
   const accessOptions = {

@@ -68,7 +68,7 @@ const liveCourseSchema = new mongoose.Schema({
 });
 
 // Auto-update status middleware
-liveCourseSchema.pre('save', function(next) {
+liveCourseSchema.pre('save', function() {
   if (this.status !== 'Draft' && this.status !== 'Cancelled') {
     const today = new Date();
     const startDate = this.startDate ? new Date(this.startDate) : null;
@@ -84,7 +84,6 @@ liveCourseSchema.pre('save', function(next) {
       }
     }
   }
-  next();
 });
 
 const LiveCourse = mongoose.model('LiveCourse', liveCourseSchema);

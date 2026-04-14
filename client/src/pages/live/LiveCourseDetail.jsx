@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { motion } from 'framer-motion';
 import { AnimatePresence } from 'framer-motion';
 import { FiVideo, FiCalendar, FiUsers, FiClock, FiCheckCircle, FiChevronDown, FiBookOpen, FiStar, FiFileText } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
@@ -137,10 +138,10 @@ const LiveCourseDetail = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-20 pt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 relative items-start">
-          
+
           {/* LEFT SECTION - MAIN CONTENT */}
           <div className="xl:col-span-2 space-y-8">
-            
+
             {/* Header / Intro */}
             <div className="space-y-3 md:space-y-4">
               <span className="inline-flex items-center px-2.5 py-0.5 md:px-3 md:py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full text-xs font-bold uppercase tracking-widest border border-primary-200 dark:border-primary-800/30">
@@ -156,9 +157,9 @@ const LiveCourseDetail = () => {
 
               {/* Instructor Mini Profile */}
               <div className="flex items-center mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-800/80">
-                <img 
-                  src={course.instructor?.avatar || `https://ui-avatars.com/api/?name=${course.instructor?.name || 'Instructor'}&background=4f46e5&color=fff`} 
-                  alt={course.instructor?.name || 'Instructor'} 
+                <img
+                  src={course.instructor?.avatar || `https://ui-avatars.com/api/?name=${course.instructor?.name || 'Instructor'}&background=4f46e5&color=fff`}
+                  alt={course.instructor?.name || 'Instructor'}
                   className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-white dark:border-gray-800 shadow-md object-cover"
                 />
                 <div className="ml-3 md:ml-4 flex flex-col">
@@ -184,7 +185,7 @@ const LiveCourseDetail = () => {
 
             {/* Content Sections Wrapper */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-              
+
               {/* Learning Objectives */}
               {course.learningObjectives && course.learningObjectives.length > 0 && (
                 <div className="p-4 md:p-6 lg:p-8 border-b border-gray-100 dark:border-gray-800">
@@ -268,25 +269,25 @@ const LiveCourseDetail = () => {
                     </ul>
                   </div>
                 )}
-                
+
                 {course.faqs && course.faqs.length > 0 && (
                   <div>
                     <h3 className="text-lg md:text-lg font-bold text-gray-900 dark:text-white mb-3 md:mb-4">FAQ</h3>
                     <div className="space-y-2 md:space-y-3">
                       {course.faqs.map((faq, idx) => (
                         <div key={idx} className="border border-gray-200 dark:border-gray-800 rounded-lg md:rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800/20">
-                          <button 
+                          <button
                             onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
                             className="w-full text-left px-3 md:px-4 py-2.5 md:py-3 flex justify-between items-center text-xs md:text-sm font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800/40 transition"
                           >
                             {faq.question}
-                            <FiChevronDown className={`transform transition-transform shrink-0 ml-2`} size={16} style={{transform: activeFaq === idx ? 'rotate(180deg)' : 'rotate(0deg)'}} />
+                            <FiChevronDown className={`transform transition-transform shrink-0 ml-2`} size={16} style={{ transform: activeFaq === idx ? 'rotate(180deg)' : 'rotate(0deg)' }} />
                           </button>
                           <AnimatePresence>
                             {activeFaq === idx && (
-                              <motion.div 
-                                initial={{ height: 0 }} 
-                                animate={{ height: 'auto' }} 
+                              <motion.div
+                                initial={{ height: 0 }}
+                                animate={{ height: 'auto' }}
                                 exit={{ height: 0 }}
                                 className="overflow-hidden"
                               >
@@ -309,7 +310,7 @@ const LiveCourseDetail = () => {
           {/* RIGHT SECTION - STICKY CARD */}
           <div className="xl:col-span-1">
             <div className="sticky top-20 md:top-28 bg-white dark:bg-gray-900 rounded-xl md:rounded-2xl shadow-lg md:shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col order-first xl:order-last">
-              
+
               {/* Card Header pricing */}
               <div className="bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 border-b border-gray-100 dark:border-gray-800">
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 md:mb-2">Registration Fee</span>
@@ -333,19 +334,19 @@ const LiveCourseDetail = () => {
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Duration</span>
                     <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
-                       {course.duration || 'N/A'}
+                      {course.duration || 'N/A'}
                     </span>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Total Seats</span>
                     <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
-                       {course.maxStudents}
+                      {course.maxStudents}
                     </span>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Availability</span>
                     <span className={`text-sm md:text-base font-bold flex items-center ${isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'}`}>
-                       {course.maxStudents - course.currentEnrollments} left
+                      {course.maxStudents - course.currentEnrollments} left
                     </span>
                   </div>
                 </div>
@@ -369,7 +370,7 @@ const LiveCourseDetail = () => {
 
                 <div className="pt-2 md:pt-3">
                   {isEnrolledLocally ? (
-                    <button 
+                    <button
                       onClick={() => navigate('/dashboard')}
                       className="w-full py-3 md:py-4 bg-green-500 hover:bg-green-600 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-md shadow-green-500/20 active:scale-[0.98] flex items-center justify-center"
                     >
@@ -380,7 +381,7 @@ const LiveCourseDetail = () => {
                       Cohort Full
                     </button>
                   ) : (
-                    <button 
+                    <button
                       onClick={handleEnrollButton}
                       className="w-full py-3 md:py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-xl shadow-primary-600/30 active:scale-[0.98] flex items-center justify-center"
                     >
@@ -403,7 +404,7 @@ const LiveCourseDetail = () => {
       <AnimatePresence>
         {isModalOpen && course && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/70 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
@@ -412,21 +413,21 @@ const LiveCourseDetail = () => {
               <div className="p-4 sm:p-5 md:p-6 lg:p-8">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1 md:mb-2">Enrollment Application</h2>
                 <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">Complete checkout for <strong>{course.title}</strong>.</p>
-                
+
                 <form onSubmit={processPayment} className="space-y-3 md:space-y-4">
                   <div>
                     <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name <span className="text-red-500">*</span></label>
-                    <input type="text" required value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    <input type="text" required value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
                   </div>
                   <div>
                     <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-red-500">*</span></label>
-                    <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
                   </div>
                   <div>
                     <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number <span className="text-red-500">*</span></label>
-                    <input type="tel" required value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
                   </div>
-                  
+
                   <div className="pt-4 md:pt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 md:py-3.5 rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs md:text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition">Cancel</button>
                     <button type="submit" className="flex-1 px-4 py-2.5 md:py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs md:text-sm rounded-lg md:rounded-xl transition shadow-xl shadow-primary-600/20 active:scale-[0.98]">

@@ -68,11 +68,10 @@ const quizSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-quizSchema.pre('save', function (next) {
+quizSchema.pre('save', function () {
   if (this.isFinal && this.passingScore < 80) {
     this.passingScore = 80;
   }
-  next();
 });
 
 const Quiz = mongoose.model('Quiz', quizSchema);

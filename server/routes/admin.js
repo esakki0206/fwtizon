@@ -11,6 +11,7 @@ import AssignmentSubmission from '../models/AssignmentSubmission.js';
 import Notification from '../models/Notification.js';
 import Review from '../models/Review.js';
 import { protect, authorize } from '../middleware/auth.js';
+import sendEmail from '../utils/sendEmail.js';
 
 const router = express.Router();
 
@@ -555,6 +556,52 @@ router.get('/activity-feed', protect, authorize('admin'), async (req, res) => {
 // ==============================
 // ADMIN NOTIFICATIONS
 // ==============================
+
+/**
+ * @desc    Broadcast an announcement to students
+ * @route   POST /api/admin/announcements
+ * @access  Private/Admin
+ */
+router.post('/announcements', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { title, message, postToDashboard, sendEmailAlert } = req.body;
+    
+    if (!title || !message) {
+      return res.status(400).json({ success: false, message: 'Please provide both title and message' });
+    }
+
+    const students = await User.find({ role: { $ne: 'admin' }, status: { $ne: 'suspended' } }).select('_id email');
+    
+    if (postToDashboard) {
+      const notifications = students.map(student => ({
+        user: student._id,
+        type: 'system',
+        message: `${title}: ${message}`,
+      }));
+      await Notification.insertMany(notifications);
+    }
+    
+    if (sendEmailAlert) {
+      // Send email to all students.
+      for (const student of students) {
+         try {
+            await sendEmail({
+              email: student.email,
+              subject: `Platform Announcement: ${title}`,
+              html: `<h2>${title}</h2><p>${message}</p>`,
+            });
+         } catch (err) {
+            console.error(`Failed to send email to ${student.email}:`, err.message);
+         }
+      }
+    }
+    
+    res.status(200).json({ success: true, message: `Announcement sent successfully to ${students.length} students.` });
+  } catch (error) {
+    console.error('Announcement broadcast error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 /**
  * @desc    Get admin-level notifications

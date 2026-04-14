@@ -15,25 +15,26 @@ const isDummyKey = () => {
 let _razorpay = null;
 const getRazorpay = () => {
   if (_razorpay) return _razorpay;
+
   if (!isDummyKey()) {
     _razorpay = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
   }
+
   return _razorpay;
 };
 
 /**
- * @desc    Create Razorpay Order
- * @route   POST /api/enroll/create-order
- * @access  Private
+ * Create Razorpay Order
  */
 export const createOrder = async (req, res) => {
   try {
     const { courseId, liveCourseId } = req.body;
 
     let targetCourse;
+
     if (liveCourseId) {
       targetCourse = await LiveCourse.findById(liveCourseId);
     } else if (courseId) {
@@ -41,27 +42,46 @@ export const createOrder = async (req, res) => {
     }
 
     if (!targetCourse) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found',
+      });
     }
 
-    // Check seat capacity for live courses
-    if (liveCourseId && targetCourse.maxStudents && targetCourse.currentEnrollments >= targetCourse.maxStudents) {
-      return res.status(400).json({ success: false, message: 'This live class is full' });
+    // Seat check
+    if (
+      liveCourseId &&
+      targetCourse.maxStudents &&
+      targetCourse.currentEnrollments >= targetCourse.maxStudents
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'This live class is full',
+      });
     }
 
-    // Idempotency: check existing enrollment
-    const query = { user: req.user.id, status: { $in: ['active', 'completed'] } };
+    // Prevent duplicate enrollments
+    const query = {
+      user: req.user.id,
+      status: { $in: ['active', 'completed'] },
+    };
+
     if (liveCourseId) query.liveCourse = liveCourseId;
     if (courseId) query.course = courseId;
 
     const existingEnrollment = await Enrollment.findOne(query);
+
     if (existingEnrollment) {
-      return res.status(400).json({ success: false, message: 'Already enrolled in this course' });
+      return res.status(400).json({
+        success: false,
+        message: 'Already enrolled in this course',
+      });
     }
 
-    const amount = targetCourse.price * 100; // Razorpay expects paise
+    const amount = targetCourse.price * 100;
 
     let order;
+
     if (isDummyKey()) {
       order = {
         id: `order_mock_${Date.now()}`,
@@ -69,9 +89,11 @@ export const createOrder = async (req, res) => {
         currency: 'INR',
         status: 'created',
       };
-      console.log('[MOCK] Created mock Razorpay order:', order.id);
+
+      console.log('Created mock Razorpay order:', order.id);
     } else {
       const razorpay = getRazorpay();
+
       order = await razorpay.orders.create({
         amount,
         currency: 'INR',
@@ -84,17 +106,25 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    res.status(200).json({ success: true, data: order });
+    res.status(200).json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
     console.error('CREATE ORDER ERROR:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
 /**
- * @desc    Verify Payment and Enroll User
- * @route   POST /api/enroll/verify-payment
- * @access  Private
+ * Verify Payment and Enroll User
+ */
+/**
+ * Verify Payment and Enroll User
  */
 export const verifyPayment = async (req, res) => {
   try {
@@ -110,6 +140,22 @@ export const verifyPayment = async (req, res) => {
       message,
     } = req.body;
 
+    // ── Ensure authenticated user ──
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication failed',
+      });
+    }
+
+    // ── Ensure course id exists ──
+    if (!courseId && !liveCourseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID missing',
+      });
+    }
+
     // ── Signature verification ──
     let isAuthentic = false;
 
@@ -118,26 +164,40 @@ export const verifyPayment = async (req, res) => {
       console.log('[MOCK] Auto-approving payment verification');
     } else {
       if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-        return res.status(400).json({ success: false, message: 'Missing payment verification fields' });
+        return res.status(400).json({
+          success: false,
+          message: 'Missing payment verification fields',
+        });
       }
+
       const body = razorpay_order_id + '|' + razorpay_payment_id;
+
       const expectedSignature = crypto
         .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
         .update(body)
         .digest('hex');
+
       isAuthentic = expectedSignature === razorpay_signature;
     }
 
     if (!isAuthentic) {
-      return res.status(400).json({ success: false, message: 'Payment verification failed — invalid signature' });
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed — invalid signature',
+      });
     }
 
-    // ── Idempotency: prevent duplicate enrollments ──
-    const existQuery = { user: req.user.id, status: { $in: ['active', 'completed'] } };
+    // ── Prevent duplicate enrollments ──
+    const existQuery = {
+      user: req.user.id,
+      status: { $in: ['active', 'completed'] },
+    };
+
     if (liveCourseId) existQuery.liveCourse = liveCourseId;
     if (courseId) existQuery.course = courseId;
 
     const existingEnrollment = await Enrollment.findOne(existQuery);
+
     if (existingEnrollment) {
       return res.status(200).json({
         success: true,
@@ -146,8 +206,8 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    // ── Build enrollment ──
     let enrolledItem;
+
     const enrollData = {
       user: req.user.id,
       paymentId: razorpay_payment_id || `mock_pay_${Date.now()}`,
@@ -158,30 +218,72 @@ export const verifyPayment = async (req, res) => {
       message,
     };
 
+    // ── Live Course Enrollment ──
     if (liveCourseId) {
       enrolledItem = await LiveCourse.findById(liveCourseId);
-      if (!enrolledItem) return res.status(404).json({ success: false, message: 'Live course not found' });
+
+      if (!enrolledItem) {
+        return res.status(404).json({
+          success: false,
+          message: 'Live course not found',
+        });
+      }
+
+      // Seat check
+      if (
+        enrolledItem.maxStudents &&
+        enrolledItem.currentEnrollments >= enrolledItem.maxStudents
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'This cohort is already full',
+        });
+      }
+
       enrollData.liveCourse = liveCourseId;
       enrollData.amount = enrolledItem.price;
 
-      enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
+      enrolledItem.currentEnrollments =
+        (enrolledItem.currentEnrollments || 0) + 1;
+
       await enrolledItem.save();
-    } else if (courseId) {
+    }
+
+    // ── Normal Course Enrollment ──
+    else if (courseId) {
       enrolledItem = await Course.findById(courseId);
-      if (!enrolledItem) return res.status(404).json({ success: false, message: 'Course not found' });
+
+      if (!enrolledItem) {
+        return res.status(404).json({
+          success: false,
+          message: 'Course not found',
+        });
+      }
+
       enrollData.course = courseId;
       enrollData.amount = enrolledItem.price;
 
-      enrolledItem.enrollmentCount = (enrolledItem.enrollmentCount || 0) + 1;
+      enrolledItem.enrollmentCount =
+        (enrolledItem.enrollmentCount || 0) + 1;
+
       await enrolledItem.save();
+    }
+
+    // ── Final safety check ──
+    if (!enrolledItem) {
+      return res.status(500).json({
+        success: false,
+        message: 'Enrollment failed — course data missing',
+      });
     }
 
     const enrollment = await Enrollment.create(enrollData);
 
+    // ── Notification ──
     await Notification.create({
       user: req.user.id,
       type: 'payment',
-      message: `You have successfully enrolled in "${enrolledItem.title}"!`,
+      message: `You have successfully enrolled in "${enrolledItem?.title || 'course'}"!`,
       link: courseId ? `/learn/${enrolledItem._id}` : '/dashboard',
     });
 
@@ -190,16 +292,18 @@ export const verifyPayment = async (req, res) => {
       message: 'Payment verified and enrolled successfully',
       data: enrollment,
     });
+
   } catch (error) {
-    console.error('VERIFY PAYMENT ERROR:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('VERIFY PAYMENT ERROR:', error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Internal Server Error',
+    });
   }
 };
-
 /**
- * @desc    Razorpay Webhook handler (server-side confirmation)
- * @route   POST /api/enroll/webhook
- * @access  Public (verified via Razorpay signature)
+ * Razorpay Webhook
  */
 export const razorpayWebhook = async (req, res) => {
   try {
@@ -207,7 +311,10 @@ export const razorpayWebhook = async (req, res) => {
     const signature = req.headers['x-razorpay-signature'];
 
     if (!signature || isDummyKey()) {
-      return res.status(200).json({ success: true, message: 'Webhook acknowledged (no-op)' });
+      return res.status(200).json({
+        success: true,
+        message: 'Webhook acknowledged (no-op)',
+      });
     }
 
     const expectedSignature = crypto
@@ -216,28 +323,36 @@ export const razorpayWebhook = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== signature) {
-      return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid webhook signature',
+      });
     }
 
     const event = req.body.event;
 
     if (event === 'payment.captured') {
       const payment = req.body.payload.payment.entity;
-      console.log(`[Webhook] Payment captured: ${payment.id}, amount: ₹${payment.amount / 100}`);
-      // Additional server-side logic can be added here
+
+      console.log(
+        `[Webhook] Payment captured: ${payment.id}, amount: ₹${payment.amount / 100
+        }`
+      );
     }
 
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('WEBHOOK ERROR:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
 /**
- * @desc    Get user's enrolled courses
- * @route   GET /api/enroll/my-courses
- * @access  Private
+ * Get My Courses
  */
 export const getMyCourses = async (req, res) => {
   try {
@@ -249,32 +364,48 @@ export const getMyCourses = async (req, res) => {
       })
       .populate({
         path: 'liveCourse',
-        select: 'title thumbnail instructor category zoomLink whatsappGroup startDate duration schedule',
+        select:
+          'title thumbnail instructor category zoomLink whatsappGroup startDate duration schedule',
         populate: { path: 'instructor', select: 'name avatar' },
       });
 
-    res.status(200).json({ success: true, count: enrollments.length, data: enrollments });
+    res.status(200).json({
+      success: true,
+      count: enrollments.length,
+      data: enrollments,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
 /**
- * @desc    Update lesson progress
- * @route   PUT /api/enroll/progress
- * @access  Private
+ * Update Progress
  */
 export const updateProgress = async (req, res) => {
   try {
     const { courseId, lessonId } = req.body;
 
     if (!courseId || !lessonId) {
-      return res.status(400).json({ success: false, message: 'courseId and lessonId are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'courseId and lessonId are required',
+      });
     }
 
-    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId });
+    const enrollment = await Enrollment.findOne({
+      user: req.user.id,
+      course: courseId,
+    });
+
     if (!enrollment) {
-      return res.status(404).json({ success: false, message: 'Enrollment not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Enrollment not found',
+      });
     }
 
     if (!enrollment.progress.completedLessons.includes(lessonId)) {
@@ -282,8 +413,14 @@ export const updateProgress = async (req, res) => {
       await enrollment.save();
     }
 
-    res.status(200).json({ success: true, data: enrollment.progress });
+    res.status(200).json({
+      success: true,
+      data: enrollment.progress,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

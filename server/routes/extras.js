@@ -6,19 +6,21 @@ import Course from '../models/Course.js';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload } from '../config/cloudinary.js';
+// Use uploadImage (image-optimized: auto quality, auto format, max 1200px)
+// NOT the generic `upload` which is for files/videos and skips image transforms.
+import { uploadImage } from '../config/cloudinary.js';
 
 const router = express.Router();
 
 // ======================
-// UPLOAD FILE
+// UPLOAD IMAGE
 // ======================
-router.post('/upload', protect, authorize('admin', 'instructor'), upload.single('file'), (req, res) => {
+router.post('/upload', protect, authorize('admin', 'instructor'), uploadImage.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    // Return the Cloudinary URL
+    // req.file.path contains the optimized Cloudinary HTTPS URL
     res.status(200).json({ success: true, url: req.file.path });
   } catch (err) {
     console.error('Upload handler Error:', err);
@@ -70,7 +72,6 @@ router.post('/reviews', protect, async (req, res) => {
 // ======================
 router.get('/live-courses', async (req, res) => {
   try {
-    // Only return public info, strip zoom and whatsapp links
     const courses = await LiveCourse.find().select('-zoomLink -whatsappGroup').populate('instructor', 'name avatar');
     res.status(200).json({ success: true, count: courses.length, data: courses });
   } catch (err) {
@@ -87,27 +88,19 @@ router.get('/live-courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
-
-    const query = isObjectId
-      ? { _id: id }
-      : { slug: id };
-
+    const query = isObjectId ? { _id: id } : { slug: id };
     const course = await LiveCourse.findOne(query)
       .select('-zoomLink -whatsappGroup')
       .populate('instructor', 'name avatar bio');
-
     if (!course) {
       return res.status(404).json({ success: false, message: 'Live course not found' });
     }
-
     res.status(200).json({ success: true, data: course });
   } catch (err) {
     console.error('Public live course detail error:', err);
     res.status(500).json({ success: false, message: 'Server error fetching live course' });
   }
 });
-
-// Code migrated to admin.js
 
 // ======================
 // NOTIFICATIONS

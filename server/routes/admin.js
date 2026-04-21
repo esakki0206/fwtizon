@@ -10,6 +10,10 @@ import Assignment from '../models/Assignment.js';
 import AssignmentSubmission from '../models/AssignmentSubmission.js';
 import Notification from '../models/Notification.js';
 import Review from '../models/Review.js';
+import Receipt from '../models/Receipt.js';
+import Counter from '../models/Counter.js';
+import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
+import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 import { protect, authorize } from '../middleware/auth.js';
 import sendEmail from '../utils/sendEmail.js';
 
@@ -1214,6 +1218,185 @@ router.get('/enrollments', protect, authorize('admin'), async (req, res) => {
 });
 
 // ==============================
+// COHORT CERTIFICATION MAP
+// ==============================
+router.get('/cohorts', protect, authorize('admin', 'instructor'), async (req, res) => {
+  try {
+    const cohorts = await LiveCourse.find().sort('-createdAt');
+    res.status(200).json({ success: true, data: cohorts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/cohorts/:cohortId/students', protect, authorize('admin'), async (req, res) => {
+  try {
+    const enrollments = await Enrollment.find({ 
+      liveCourse: req.params.cohortId,
+      status: { $in: ['active', 'completed'] },
+      paymentId: { $exists: true, $ne: null }
+    }).populate('user', 'name email');
+
+    const formatted = enrollments.map(en => ({
+      userId: en.user?._id,
+      userName: en.user?.name || en.fullName,
+      userEmail: en.user?.email || en.email,
+      completionStatus: 'ELIGIBLE', // No completion check for cohort mapping per requirements
+      completedAt: en.completedAt || null
+    })).filter(e => e.userId);
+
+    res.status(200).json({ success: true, count: formatted.length, data: formatted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/generate-cohort-certificate', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { userId, cohortId } = req.body;
+    if (!userId || !cohortId) return res.status(400).json({ success: false, message: 'userId and cohortId are required' });
+
+    const enrollment = await Enrollment.findOne({ user: userId, liveCourse: cohortId }).populate('user liveCourse');
+    if (!enrollment) return res.status(404).json({ success: false, message: 'Valid cohort enrollment not found' });
+    
+    // Duplicate check
+    let cert = await Certificate.findOne({ user: userId, liveCourse: cohortId, type: 'COHORT' });
+    if (cert) return res.status(200).json({ success: true, message: 'Certificate already exists', data: cert });
+
+    const serialNumber = await Counter.getNextSequence('certificates');
+    const paddedSerial = String(serialNumber).padStart(4, '0');
+    const currentYear = new Date().getFullYear();
+    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
+
+    const pdfData = {
+      studentName: enrollment.user.name,
+      courseName: enrollment.liveCourse.title,
+      domain: enrollment.liveCourse.category || 'Specialized Training',
+      areaOfExpertise: 'Live Cohort Program',
+      completionDate: enrollment.liveCourse.endDate || new Date(),
+      certificateId,
+      serialNumber,
+      type: 'COHORT' // Triggers dynamic string in PDF gen
+    };
+
+    const pdfBuffer = await generateCertificatePDF(pdfData);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${userId}-cohort`, 'fwtion/certificates');
+
+    cert = await Certificate.create({
+      certificateId,
+      user: userId,
+      liveCourse: cohortId,
+      type: 'COHORT',
+      studentName: enrollment.user.name,
+      studentEmail: enrollment.user.email,
+      courseName: enrollment.liveCourse.title,
+      domain: pdfData.domain,
+      areaOfExpertise: pdfData.areaOfExpertise,
+      issueDate: new Date(),
+      completionDate: pdfData.completionDate,
+      serialNumber,
+      fileUrl,
+      enrollment: enrollment._id
+    });
+
+    res.status(201).json({ success: true, data: cert });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// CERTIFICATE MAPPING FIX
+// ==============================
+router.get('/courses/:courseId/enrolled-students', protect, authorize('admin'), async (req, res) => {
+  try {
+    const enrollments = await Enrollment.find({ 
+      course: req.params.courseId,
+      status: { $in: ['active', 'completed'] },
+      paymentId: { $exists: true, $ne: null } // Ensure payment is success
+    }).populate('user', 'name email');
+
+    const formatted = enrollments.map(en => ({
+      userId: en.user?._id,
+      userName: en.user?.name || en.fullName,
+      userEmail: en.user?.email || en.email,
+      completionStatus: en.status === 'completed' || en.progress?.percentComplete >= 100 ? 'COMPLETED' : 'IN_PROGRESS',
+      completedAt: en.completedAt || null
+    })).filter(e => e.userId); // filter out if user population failed
+
+    res.status(200).json({ success: true, count: formatted.length, data: formatted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/generate-certificate', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { userId, courseId } = req.body;
+    if (!userId || !courseId) return res.status(400).json({ success: false, message: 'userId and courseId are required' });
+
+    // Validate enrollment
+    const enrollment = await Enrollment.findOne({ user: userId, course: courseId }).populate('user course');
+    if (!enrollment) return res.status(404).json({ success: false, message: 'Valid enrollment not found' });
+    
+    // Check completion status
+    if (enrollment.status !== 'completed' && enrollment.progress?.percentComplete < 100) {
+      return res.status(400).json({ success: false, message: 'Course is not COMPLETED by this student' });
+    }
+
+    // Duplicate check
+    let cert = await Certificate.findOne({ user: userId, course: courseId });
+    if (cert) return res.status(200).json({ success: true, message: 'Certificate already exists', data: cert });
+
+    const serialNumber = await Counter.getNextSequence('certificates');
+    const paddedSerial = String(serialNumber).padStart(4, '0');
+    const currentYear = new Date().getFullYear();
+    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
+
+    const pdfData = {
+      studentName: enrollment.user.name,
+      courseName: enrollment.course.title,
+      domain: enrollment.course.category || 'Professional Development',
+      areaOfExpertise: 'Specialized Training',
+      completionDate: enrollment.completedAt || new Date(),
+      certificateId,
+      serialNumber
+    };
+
+    const pdfBuffer = await generateCertificatePDF(pdfData);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${userId}`, 'fwtion/certificates');
+
+    cert = await Certificate.create({
+      certificateId,
+      user: userId,
+      course: courseId,
+      studentName: enrollment.user.name,
+      studentEmail: enrollment.user.email,
+      courseName: enrollment.course.title,
+      domain: pdfData.domain,
+      areaOfExpertise: pdfData.areaOfExpertise,
+      issueDate: new Date(),
+      completionDate: pdfData.completionDate,
+      serialNumber,
+      fileUrl,
+      enrollment: enrollment._id
+    });
+
+    enrollment.certificateId = cert.certificateId;
+    if(enrollment.status !== 'completed'){
+      enrollment.status = 'completed';
+      enrollment.completedAt = new Date();
+      enrollment.progress.percentComplete = 100;
+    }
+    await enrollment.save({ validateBeforeSave: false });
+
+    res.status(201).json({ success: true, data: cert });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
 // CERTIFICATES
 // ==============================
 
@@ -1260,6 +1443,147 @@ router.delete('/certificates/:id', protect, authorize('admin'), async (req, res)
     const certificate = await Certificate.findByIdAndDelete(req.params.id);
     if (!certificate) return res.status(404).json({ success: false, message: 'Certificate not found' });
     res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin force-generate Certificate for a given enrollment
+router.post('/certificates/generate/:enrollmentId', protect, authorize('admin'), async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findById(req.params.enrollmentId)
+      .populate('user', 'name email')
+      .populate('course')
+      .populate('liveCourse');
+
+    if (!enrollment) return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    if (enrollment.status !== 'completed') return res.status(400).json({ success: false, message: 'Course is not completed' });
+
+    const courseType = enrollment.course ? 'course' : 'liveCourse';
+    const courseId = enrollment[courseType]?._id;
+
+    let cert = await Certificate.findOne({ user: enrollment.user._id, [courseType]: courseId });
+    if (cert) return res.status(400).json({ success: false, message: 'Certificate already generated' });
+
+    const courseRef = enrollment[courseType];
+    const serialNumber = await Counter.getNextSequence('certificates');
+    const paddedSerial = String(serialNumber).padStart(4, '0');
+    const currentYear = new Date().getFullYear();
+    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
+
+    const pdfData = {
+      studentName: enrollment.user.name,
+      courseName: courseRef.title,
+      domain: courseRef.category || 'Professional Development',
+      areaOfExpertise: 'Specialized Training',
+      completionDate: enrollment.completedAt || new Date(),
+      certificateId,
+      serialNumber
+    };
+
+    const pdfBuffer = await generateCertificatePDF(pdfData);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${enrollment.user._id}`, 'fwtion/certificates');
+
+    cert = await Certificate.create({
+      certificateId,
+      user: enrollment.user._id,
+      [courseType]: courseId,
+      studentName: enrollment.user.name,
+      studentEmail: enrollment.user.email,
+      courseName: courseRef.title,
+      domain: pdfData.domain,
+      areaOfExpertise: pdfData.areaOfExpertise,
+      issueDate: new Date(),
+      completionDate: pdfData.completionDate,
+      serialNumber,
+      fileUrl,
+      enrollment: enrollment._id
+    });
+
+    enrollment.certificateId = cert.certificateId;
+    await enrollment.save({ validateBeforeSave: false });
+
+    res.status(201).json({ success: true, data: cert });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/certificates/regenerate/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const cert = await Certificate.findById(req.params.id)
+      .populate('user', 'name _id')
+      .populate('course', 'title category')
+      .populate('liveCourse', 'title category');
+      
+    if (!cert) return res.status(404).json({ success: false, message: 'Certificate not found' });
+    
+    // Admin might want to update the certificate with the new design
+    const courseRef = cert.course || cert.liveCourse;
+    const pdfData = {
+      studentName: req.body.studentName || cert.studentName,
+      courseName: req.body.courseName || cert.courseName,
+      domain: req.body.domain || cert.domain || courseRef?.category || 'Professional Development',
+      areaOfExpertise: req.body.areaOfExpertise || cert.areaOfExpertise || 'Specialized Training',
+      completionDate: req.body.completionDate || cert.completionDate || cert.issueDate,
+      certificateId: cert.certificateId,
+      serialNumber: cert.serialNumber || parseInt(cert.certificateId.split('-').pop(), 10) || 1
+    };
+
+    const pdfBuffer = await generateCertificatePDF(pdfData);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${cert.certificateId}-${cert.user._id}-v2`, 'fwtion/certificates');
+    
+    cert.fileUrl = fileUrl;
+    cert.studentName = pdfData.studentName;
+    cert.courseName = pdfData.courseName;
+    cert.domain = pdfData.domain;
+    cert.areaOfExpertise = pdfData.areaOfExpertise;
+    
+    await cert.save();
+    res.status(200).json({ success: true, data: cert });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/enrollments/:id/complete', protect, authorize('admin'), async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findById(req.params.id).populate('course liveCourse user');
+    if (!enrollment) return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    
+    enrollment.status = 'completed';
+    enrollment.completedAt = new Date();
+    enrollment.progress.percentComplete = 100;
+    
+    await enrollment.save();
+    res.status(200).json({ success: true, message: 'Enrollment completed manually', data: enrollment });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin Receipts
+router.get('/receipts', protect, authorize('admin'), async (req, res) => {
+  try {
+    const receipts = await Receipt.find()
+      .populate('user', 'name email')
+      .populate('course', 'title')
+      .populate('liveCourse', 'title')
+      .sort('-createdAt');
+    res.status(200).json({ success: true, count: receipts.length, data: receipts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/receipts/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const receipt = await Receipt.findById(req.params.id)
+      .populate('user', 'name email')
+      .populate('course', 'title')
+      .populate('liveCourse', 'title');
+    if (!receipt) return res.status(404).json({ success: false, message: 'Receipt not found' });
+    res.status(200).json({ success: true, data: receipt });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1317,6 +1641,187 @@ router.delete('/live-courses/:id', protect, authorize('admin', 'instructor'), as
   } catch (err) {
     console.error('Live course deletion error:', err);
     res.status(500).json({ success: false, message: 'Error deleting live course' });
+  }
+});
+
+// ==============================
+// ADMIN COURSE MANAGEMENT
+// All statuses returned (draft + published) — admin sees everything.
+// ==============================
+
+/**
+ * @desc    List ALL courses (any status) for admin panel
+ * @route   GET /api/admin/courses
+ * @query   page, limit, search, status
+ * @access  Private/Admin
+ */
+router.get('/courses', protect, authorize('admin'), async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.search) {
+      filter.title = { $regex: escapeRegex(req.query.search), $options: 'i' };
+    }
+    if (req.query.status && ['draft', 'published'].includes(req.query.status)) {
+      filter.status = req.query.status;
+    }
+
+    const [courses, total] = await Promise.all([
+      Course.find(filter)
+        .populate({ path: 'instructor', select: 'name avatar' })
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Course.countDocuments(filter),
+    ]);
+
+    // Merge display overrides so admin table shows correct instructor info
+    const data = courses.map(c => ({
+      ...c,
+      displayInstructorName: (c.instructorName && c.instructorName.trim()) || c.instructor?.name || 'Fwtion Academy',
+      displayInstructorPhoto: (c.instructorPhoto && c.instructorPhoto.trim()) || c.instructor?.avatar || '',
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      totalPages: Math.max(Math.ceil(total / limit), 1),
+      data,
+    });
+  } catch (error) {
+    console.error('Admin list courses error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Create a course as admin
+ * @route   POST /api/admin/courses
+ * @access  Private/Admin
+ */
+router.post('/courses', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto } = req.body;
+
+    // Validation
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Course title is required' });
+    }
+    if (!description || !description.trim()) {
+      return res.status(400).json({ success: false, message: 'Course description is required' });
+    }
+    if (price === undefined || price === null || isNaN(Number(price)) || Number(price) < 0) {
+      return res.status(400).json({ success: false, message: 'A valid course price (≥ 0) is required' });
+    }
+    if (!category) {
+      return res.status(400).json({ success: false, message: 'Course category is required' });
+    }
+    if (!instructorName || !instructorName.trim()) {
+      return res.status(400).json({ success: false, message: 'Instructor name is required' });
+    }
+
+    const courseData = {
+      title: title.trim(),
+      description: description.trim(),
+      price: Number(price),
+      category,
+      status: (status || 'draft').toLowerCase(),
+      thumbnail: thumbnail || 'no-photo.jpg',
+      instructorName: instructorName.trim(),
+      instructorPhoto: instructorPhoto || '',
+      instructor: req.user.id,
+    };
+
+    const course = await Course.create(courseData);
+    res.status(201).json({ success: true, data: course });
+  } catch (error) {
+    console.error('Admin create course error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Update a course as admin (all fields including instructor overrides & price)
+ * @route   PUT /api/admin/courses/:id
+ * @access  Private/Admin
+ */
+router.put('/courses/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto } = req.body;
+
+    // Validation
+    if (title !== undefined && !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Course title cannot be empty' });
+    }
+    if (price !== undefined && (isNaN(Number(price)) || Number(price) < 0)) {
+      return res.status(400).json({ success: false, message: 'Price must be a non-negative number' });
+    }
+    if (instructorName !== undefined && !instructorName.trim()) {
+      return res.status(400).json({ success: false, message: 'Instructor name cannot be empty' });
+    }
+
+    const allowedUpdates = {};
+    if (title !== undefined) allowedUpdates.title = title.trim();
+    if (description !== undefined) allowedUpdates.description = description.trim();
+    if (price !== undefined) allowedUpdates.price = Number(price);
+    if (category !== undefined) allowedUpdates.category = category;
+    if (status !== undefined) allowedUpdates.status = status.toLowerCase();
+    if (thumbnail !== undefined) allowedUpdates.thumbnail = thumbnail;
+    if (instructorName !== undefined) allowedUpdates.instructorName = instructorName.trim();
+    if (instructorPhoto !== undefined) allowedUpdates.instructorPhoto = instructorPhoto;
+
+    const updated = await Course.findByIdAndUpdate(
+      req.params.id,
+      allowedUpdates,
+      { new: true, runValidators: true }
+    ).populate({ path: 'instructor', select: 'name avatar' });
+
+    const data = {
+      ...updated.toObject(),
+      displayInstructorName: (updated.instructorName && updated.instructorName.trim()) || updated.instructor?.name || 'Fwtion Academy',
+      displayInstructorPhoto: (updated.instructorPhoto && updated.instructorPhoto.trim()) || updated.instructor?.avatar || '',
+    };
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Admin update course error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Delete a course as admin
+ * @route   DELETE /api/admin/courses/:id
+ * @access  Private/Admin
+ */
+router.delete('/courses/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+    const course = await Course.findByIdAndDelete(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    console.error('Admin delete course error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

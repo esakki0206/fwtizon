@@ -44,6 +44,7 @@ import extrasRoutes from './routes/extras.js';
 import adminRoutes from './routes/admin.js';
 import notificationsRoutes from './routes/notifications.js';
 import assignmentRoutes from './routes/assignments.js';
+import certificateRoutes, { receiptsRouter } from './routes/certificates.js';
 
 // ── Mount Routers ──
 app.use('/api/auth', authRoutes);
@@ -56,6 +57,8 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/assignments', assignmentRoutes);
+app.use('/api/certificates', certificateRoutes);
+app.use('/api/receipts', receiptsRouter);
 app.use('/api', extrasRoutes);
 
 // ── Health Check ──

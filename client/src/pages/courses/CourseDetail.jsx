@@ -1,16 +1,36 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiPlay, FiBookOpen, FiClock, FiStar, FiCheck, FiLock, FiVideo, FiAward, FiChevronDown, FiChevronUp, FiUsers } from 'react-icons/fi';
+import {
+  FiPlay, FiBookOpen, FiClock, FiStar, FiCheck, FiLock,
+  FiVideo, FiAward, FiChevronDown, FiChevronUp, FiUsers,
+} from 'react-icons/fi';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/button';
 import CourseReviews from './CourseReviews';
+import { useAuth } from '../../context/AuthContext';
+
+// ── Load Razorpay SDK from CDN (idempotent) ──────────────────────────────────
+const loadRazorpay = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 
 const CourseDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [enrolling, setEnrolling] = useState(false);
+  const [isEnrolled, setIsEnrolled] = useState(false);
   const [expandedModules, setExpandedModules] = useState({});
 
   useEffect(() => {
@@ -18,11 +38,8 @@ const CourseDetail = () => {
       try {
         const res = await axios.get(`/api/courses/${id}`);
         setCourse(res.data.data);
-        // Auto-expand first module
-        if (res.data.data?.modules?.[0]) {
-          setExpandedModules({ 0: true });
-        }
-      } catch (err) {
+        if (res.data.data?.modules?.[0]) setExpandedModules({ 0: true });
+      } catch {
         toast.error('Failed to load course details');
       } finally {
         setLoading(false);
@@ -31,18 +48,128 @@ const CourseDetail = () => {
     fetchCourse();
   }, [id]);
 
-  const toggleModule = (index) => {
-    setExpandedModules(prev => ({ ...prev, [index]: !prev[index] }));
+  // Check if user is already enrolled
+  useEffect(() => {
+    if (!user || !course) return;
+    const checkEnrollment = async () => {
+      try {
+        const res = await axios.get('/api/enroll/my-courses');
+        const enrolled = (res.data.data || []).some(
+          (e) => e.course?._id === course._id || e.course?.slug === course.slug
+        );
+        setIsEnrolled(enrolled);
+      } catch {
+        // Non-fatal
+      }
+    };
+    checkEnrollment();
+  }, [user, course]);
+
+  const toggleModule = (index) =>
+    setExpandedModules((prev) => ({ ...prev, [index]: !prev[index] }));
+
+  // ── Razorpay checkout flow ────────────────────────────────────────────────
+  const handleEnroll = async () => {
+    if (!user) {
+      toast.error('Please log in to enroll');
+      navigate('/login');
+      return;
+    }
+    if (isEnrolled) {
+      navigate(`/learn/${course.slug || course._id}`);
+      return;
+    }
+
+    try {
+      setEnrolling(true);
+
+      // 1. Load Razorpay SDK
+      const sdkLoaded = await loadRazorpay();
+      if (!sdkLoaded) {
+        toast.error('Payment gateway failed to load. Check your internet connection.');
+        return;
+      }
+
+      // 2. Create order on backend — amount comes from DB, not frontend
+      const orderRes = await axios.post('/api/enroll/create-order', { courseId: course._id });
+      if (!orderRes.data.success) {
+        toast.error(orderRes.data.message || 'Failed to initiate payment');
+        return;
+      }
+
+      const { id: orderId, amount, key_id: keyId } = orderRes.data.data;
+
+      // 3. Open Razorpay checkout modal
+      const options = {
+        key: keyId,
+        amount,                             // in paise — as returned by backend
+        currency: 'INR',
+        name: 'Fwtion Academy',
+        description: course.title,
+        image: course.thumbnail && course.thumbnail !== 'no-photo.jpg' ? course.thumbnail : undefined,
+        order_id: orderId,
+        prefill: {
+          name: user.name || '',
+          email: user.email || '',
+        },
+        theme: { color: '#4f46e5' },
+        // ── Success handler ──
+        handler: async (response) => {
+          try {
+            const verifyRes = await axios.post('/api/enroll/verify-payment', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              courseId: course._id,
+              fullName: user.name || '',
+              email: user.email || '',
+            });
+
+            if (verifyRes.data.success) {
+              toast.success('🎉 Enrolled successfully!');
+              setIsEnrolled(true);
+              // Navigate to the learning page
+              setTimeout(() => navigate(`/learn/${course.slug || course._id}`), 1200);
+            } else {
+              toast.error('Payment verification failed. Contact support.');
+            }
+          } catch (err) {
+            console.error('Verify payment error:', err);
+            toast.error(err.response?.data?.message || 'Payment verification failed. Contact support.');
+          }
+        },
+        // ── Dismiss / failure handler ──
+        modal: {
+          ondismiss: () => {
+            toast('Payment cancelled', { icon: 'ℹ️' });
+            setEnrolling(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (resp) => {
+        console.error('Razorpay payment failed:', resp.error);
+        toast.error(`Payment failed: ${resp.error.description || 'Unknown error'}`);
+        setEnrolling(false);
+      });
+      rzp.open();
+    } catch (err) {
+      console.error('Enroll error:', err);
+      toast.error(err.response?.data?.message || 'Something went wrong. Please try again.');
+      setEnrolling(false);
+    }
   };
 
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <div className="bg-gray-950 py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl space-y-4">
-            <div className="h-6 w-24 bg-gray-800 rounded-full animate-shimmer"></div>
-            <div className="h-12 w-3/4 bg-gray-800 rounded-xl animate-shimmer"></div>
-            <div className="h-6 w-full bg-gray-800 rounded-lg animate-shimmer"></div>
+            <div className="h-6 w-24 bg-gray-800 rounded-full animate-shimmer" />
+            <div className="h-12 w-3/4 bg-gray-800 rounded-xl animate-shimmer" />
+            <div className="h-6 w-full bg-gray-800 rounded-lg animate-shimmer" />
           </div>
         </div>
       </div>
@@ -54,50 +181,96 @@ const CourseDetail = () => {
       <div className="text-center">
         <FiBookOpen size={48} className="mx-auto text-gray-300 dark:text-gray-700 mb-4" />
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Course not found</h2>
-        <p className="text-gray-500 text-sm mb-4">The course you're looking for doesn't exist or has been removed.</p>
+        <p className="text-gray-500 text-sm mb-4">This course doesn't exist or has been removed.</p>
         <Button asChild><Link to="/courses">Browse Courses</Link></Button>
       </div>
     </div>
   );
 
+  // ── Derived values ──────────────────────────────────────────────────────
   const totalLessons = course.modules?.reduce((acc, mod) => acc + (mod.lessons?.length || 0), 0) || 0;
-  const totalDuration = course.modules?.reduce((acc, mod) =>
-    acc + (mod.lessons?.reduce((a, l) => a + (l.duration || 600), 0) || 0), 0) || 0;
+  const totalDuration = course.modules?.reduce(
+    (acc, mod) => acc + (mod.lessons?.reduce((a, l) => a + (l.duration || 600), 0) || 0), 0
+  ) || 0;
+
+  // instructorName/Photo with display overrides from admin
+  const instructorName  = course.displayInstructorName  || course.instructor?.name  || 'Fwtion Academy';
+  const instructorPhoto = course.displayInstructorPhoto || course.instructor?.avatar || '';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-16 font-sans">
-      {/* Hero Section */}
+
+      {/* ── Hero Section ── */}
       <div className="bg-gray-950 text-white py-14 md:py-24 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-primary-900/25 rounded-full blur-[100px] -mr-16 -mt-16 pointer-events-none"></div>
-        <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-accent-900/15 rounded-full blur-[100px] pointer-events-none"></div>
+        <div className="absolute top-0 right-0 w-80 h-80 bg-primary-900/25 rounded-full blur-[100px] -mr-16 -mt-16 pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-accent-900/15 rounded-full blur-[100px] pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-3xl">
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="flex items-center space-x-2 text-xs text-primary-400 font-bold uppercase tracking-widest mb-5">
-              <span className="px-3 py-1 bg-primary-900/40 rounded-full border border-primary-800">{course.category || 'General'}</span>
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center space-x-2 text-xs text-primary-400 font-bold uppercase tracking-widest mb-5"
+            >
+              <span className="px-3 py-1 bg-primary-900/40 rounded-full border border-primary-800">
+                {course.category || 'General'}
+              </span>
             </motion.div>
 
-            <motion.h1 initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-3xl md:text-5xl font-black mb-5 leading-tight tracking-tight">
+            <motion.h1
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-3xl md:text-5xl font-black mb-5 leading-tight tracking-tight"
+            >
               {course.title}
             </motion.h1>
 
-            <motion.p initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="text-base md:text-lg text-gray-400 mb-8 max-w-2xl leading-relaxed">
+            <motion.p
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="text-base md:text-lg text-gray-400 mb-8 max-w-2xl leading-relaxed"
+            >
               {course.description}
             </motion.p>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-wrap items-center gap-4 text-sm text-gray-300 font-medium">
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-wrap items-center gap-4 text-sm text-gray-300 font-medium"
+            >
               <span className="flex items-center text-yellow-500 font-bold bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-500/20 text-xs">
                 <FiStar className="mr-1 fill-current" size={13} /> {course.ratings?.toFixed(1) || 'N/A'}
               </span>
               <span className="flex items-center text-xs"><FiUsers className="mr-1.5" size={13} />{course.numReviews || 0} reviews</span>
               <span className="flex items-center text-xs"><FiBookOpen className="mr-1.5" size={13} />{totalLessons} lessons</span>
-              <span className="flex items-center text-xs"><FiClock className="mr-1.5" size={13} />{Math.round(totalDuration / 3600)}h {Math.round((totalDuration % 3600) / 60)}m</span>
+              <span className="flex items-center text-xs">
+                <FiClock className="mr-1.5" size={13} />
+                {Math.floor(totalDuration / 3600)}h {Math.round((totalDuration % 3600) / 60)}m
+              </span>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mt-8 flex items-center space-x-3">
-              <img src={course.instructor?.avatar || 'https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff'} className="w-11 h-11 rounded-full border-2 border-white/10 shadow-lg object-cover" alt="instructor" />
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="mt-8 flex items-center space-x-3"
+            >
+              <img
+                src={
+                  instructorPhoto ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(instructorName)}&background=4f46e5&color=fff`
+                }
+                className="w-11 h-11 rounded-full border-2 border-white/10 shadow-lg object-cover"
+                alt={instructorName}
+                onError={e => {
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(instructorName)}&background=4f46e5&color=fff`;
+                }}
+              />
               <div>
-                <p className="font-bold text-white text-sm">{course.instructor?.name || 'Fwtion Academy'}</p>
+                <p className="font-bold text-white text-sm">{instructorName}</p>
                 <p className="text-xs text-gray-500">Lead Instructor</p>
               </div>
             </motion.div>
@@ -108,7 +281,7 @@ const CourseDetail = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 lg:-mt-16 relative z-20">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-7">
 
-          {/* Main Content */}
+          {/* ── Main Content ── */}
           <div className="lg:col-span-2 space-y-6 mt-10 lg:mt-24">
 
             {/* What You'll Learn */}
@@ -136,62 +309,77 @@ const CourseDetail = () => {
               </div>
 
               <div className="space-y-3">
-                {course.modules?.length > 0 ? (
-                  course.modules.map((mod, index) => (
-                    <div key={mod._id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden transition-all">
-                      <button
-                        onClick={() => toggleModule(index)}
-                        className="w-full bg-gray-50 dark:bg-gray-800/50 p-4 font-semibold text-gray-900 dark:text-white flex justify-between items-center hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
-                      >
-                        <span className="text-sm">Part {index + 1}: {mod.title}</span>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{mod.lessons?.length || 0} Lessons</span>
-                          {expandedModules[index] ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
-                        </div>
-                      </button>
-
-                      {expandedModules[index] && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                          {mod.lessons?.map((lesson) => (
-                            <div key={lesson._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors gap-2">
-                              <div className="flex items-center text-gray-700 dark:text-gray-300">
-                                {lesson.type === 'video' ? <FiVideo className="mr-3 text-primary-500/60" size={16} /> : <FiBookOpen className="mr-3 text-accent-500/60" size={16} />}
-                                <span className={`text-sm ${lesson.isPreview ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium'}`}>{lesson.title}</span>
-                              </div>
-                              <div className="flex items-center space-x-3 text-xs ml-7 sm:ml-0">
-                                {lesson.isPreview ? (
-                                  <span className="text-green-600 dark:text-green-400 font-bold text-[10px] bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full uppercase tracking-wider border border-green-200 dark:border-green-800">Preview</span>
-                                ) : (
-                                  <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-full"><FiLock className="text-gray-400" size={11} /></div>
-                                )}
-                                <span className="text-gray-500 font-mono text-[11px]">{Math.floor((lesson.duration || 600) / 60)} min</span>
-                              </div>
+                {course.modules?.length > 0 ? course.modules.map((mod, index) => (
+                  <div key={mod._id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => toggleModule(index)}
+                      className="w-full bg-gray-50 dark:bg-gray-800/50 p-4 font-semibold text-gray-900 dark:text-white flex justify-between items-center hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
+                    >
+                      <span className="text-sm">Part {index + 1}: {mod.title}</span>
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">
+                          {mod.lessons?.length || 0} Lessons
+                        </span>
+                        {expandedModules[index] ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
+                      </div>
+                    </button>
+                    {expandedModules[index] && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                        {mod.lessons?.map((lesson) => (
+                          <div key={lesson._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors gap-2">
+                            <div className="flex items-center text-gray-700 dark:text-gray-300">
+                              {lesson.type === 'video'
+                                ? <FiVideo className="mr-3 text-primary-500/60" size={16} />
+                                : <FiBookOpen className="mr-3 text-accent-500/60" size={16} />}
+                              <span className={`text-sm ${lesson.isPreview ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium'}`}>
+                                {lesson.title}
+                              </span>
                             </div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </div>
-                  ))
-                ) : (
+                            <div className="flex items-center space-x-3 text-xs ml-7 sm:ml-0">
+                              {lesson.isPreview ? (
+                                <span className="text-green-600 dark:text-green-400 font-bold text-[10px] bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full uppercase tracking-wider border border-green-200 dark:border-green-800">
+                                  Preview
+                                </span>
+                              ) : (
+                                <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-full">
+                                  <FiLock className="text-gray-400" size={11} />
+                                </div>
+                              )}
+                              <span className="text-gray-500 font-mono text-[11px]">
+                                {Math.floor((lesson.duration || 600) / 60)} min
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </div>
+                )) : (
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-8 text-center border border-gray-100 dark:border-gray-700">
                     <FiClock className="mx-auto text-3xl text-gray-400 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">Curriculum is being drafted by the instructor...</p>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Curriculum is being drafted…</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Instructor Info */}
+            {/* About Instructor */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 md:p-8">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-5">About the Instructor</h2>
               <div className="flex items-start space-x-4">
                 <img
-                  src={course.instructor?.avatar || 'https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff&size=96'}
-                  alt={course.instructor?.name}
+                  src={
+                    instructorPhoto ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(instructorName)}&background=4f46e5&color=fff&size=96`
+                  }
+                  alt={instructorName}
                   className="w-16 h-16 rounded-full border-2 border-gray-100 dark:border-gray-800 object-cover flex-shrink-0"
+                  onError={e => {
+                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(instructorName)}&background=4f46e5&color=fff&size=96`;
+                  }}
                 />
                 <div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white">{course.instructor?.name || 'Fwtion Academy'}</h3>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">{instructorName}</h3>
                   <p className="text-xs text-gray-500 mt-0.5 mb-2">Lead Enterprise Instructor</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                     {course.instructor?.bio || 'Experienced professional with deep industry expertise, delivering high-quality content to help learners master critical skills.'}
@@ -207,14 +395,19 @@ const CourseDetail = () => {
             </div>
           </div>
 
-          {/* Checkout Sidebar */}
+          {/* ── Checkout Sidebar ── */}
           <div className="lg:col-span-1">
             <div className="sticky top-20 bg-white dark:bg-gray-900 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800 overflow-hidden z-30">
               <div className="aspect-video relative bg-gray-900">
                 <img
-                  src={course.thumbnail && course.thumbnail !== 'no-photo.jpg' ? course.thumbnail : '/default-course.jpg'}
+                  src={
+                    course.thumbnail && course.thumbnail !== 'no-photo.jpg'
+                      ? course.thumbnail
+                      : '/default-course.jpg'
+                  }
                   alt={course.title}
                   className="w-full h-full object-cover"
+                  onError={e => { e.target.src = '/default-course.jpg'; }}
                 />
                 <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
                   <div className="w-16 h-16 bg-white/25 backdrop-blur-lg rounded-full flex items-center justify-center shadow-xl">
@@ -224,29 +417,55 @@ const CourseDetail = () => {
               </div>
 
               <div className="p-6">
+                {/* Price — always from course object, never hardcoded */}
                 <span className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
                   ₹{course.price}
                 </span>
-                <div className="text-xs font-bold text-green-500 uppercase tracking-widest mb-6">One-time payment</div>
+                <div className="text-xs font-bold text-green-500 uppercase tracking-widest mb-6">
+                  One-time payment
+                </div>
 
-                <Button
-                  onClick={() => alert('Payment flow initiated via RazorPay')}
-                  size="lg"
-                  className="w-full h-12 rounded-xl font-bold text-sm shadow-lg shadow-primary-600/25 transition-all active:scale-[0.98] mb-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800"
-                >
-                  Enroll Now
-                </Button>
+                {isEnrolled ? (
+                  <Button
+                    asChild
+                    size="lg"
+                    className="w-full h-12 rounded-xl font-bold text-sm mb-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+                  >
+                    <Link to={`/learn/${course.slug || course._id}`}>
+                      Continue Learning →
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleEnroll}
+                    disabled={enrolling}
+                    size="lg"
+                    className="w-full h-12 rounded-xl font-bold text-sm shadow-lg shadow-primary-600/25 transition-all active:scale-[0.98] mb-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {enrolling ? 'Processing…' : `Enroll Now — ₹${course.price}`}
+                  </Button>
+                )}
 
                 <p className="text-center text-xs font-semibold text-gray-500 dark:text-gray-400 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
                   <FiCheck className="inline mr-1 text-green-500" size={12} /> 30-Day Money-Back Guarantee
                 </p>
 
                 <div className="space-y-3.5 text-sm text-gray-600 dark:text-gray-400">
-                  <h4 className="font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider mb-1">This course includes:</h4>
-                  <div className="flex items-center text-xs"><FiVideo className="mr-3 text-primary-500/70" size={15} /> {totalLessons} detailed lessons</div>
-                  <div className="flex items-center text-xs"><FiBookOpen className="mr-3 text-accent-500/70" size={15} /> Interactive quizzes & assessments</div>
-                  <div className="flex items-center text-xs"><FiAward className="mr-3 text-yellow-500/70" size={15} /> Certificate of completion</div>
-                  <div className="flex items-center text-xs"><FiClock className="mr-3 text-gray-500/70" size={15} /> Full lifetime access</div>
+                  <h4 className="font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider mb-1">
+                    This course includes:
+                  </h4>
+                  <div className="flex items-center text-xs">
+                    <FiVideo className="mr-3 text-primary-500/70" size={15} /> {totalLessons} detailed lessons
+                  </div>
+                  <div className="flex items-center text-xs">
+                    <FiBookOpen className="mr-3 text-accent-500/70" size={15} /> Interactive quizzes &amp; assessments
+                  </div>
+                  <div className="flex items-center text-xs">
+                    <FiAward className="mr-3 text-yellow-500/70" size={15} /> Certificate of completion
+                  </div>
+                  <div className="flex items-center text-xs">
+                    <FiClock className="mr-3 text-gray-500/70" size={15} /> Full lifetime access
+                  </div>
                 </div>
               </div>
             </div>

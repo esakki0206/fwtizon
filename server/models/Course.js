@@ -20,9 +20,21 @@ const courseSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  // Optional display overrides — set by admin in CourseManager.
+  // When present these take priority over the linked User's name/avatar.
+  instructorName: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  instructorPhoto: {
+    type: String,
+    default: '',
+  },
   price: {
     type: Number,
     required: [true, 'Please add a course price'],
+    min: [0, 'Price cannot be negative'],
     default: 0,
   },
   category: {

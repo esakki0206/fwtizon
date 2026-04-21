@@ -32,6 +32,7 @@ const LiveCohorts = lazy(() => import('./pages/live/LiveCohorts'));
 const LiveCourseDetail = lazy(() => import('./pages/live/LiveCourseDetail'));
 const Profile = lazy(() => import('./pages/profile/Profile'));
 const Assignments = lazy(() => import('./pages/dashboard/Assignments'));
+const MyCertificates = lazy(() => import('./pages/dashboard/MyCertificates'));
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -65,7 +66,7 @@ function App() {
 
               <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="dashboard/assignments" element={<ProtectedRoute><Assignments /></ProtectedRoute>} />
-              <Route path="dashboard/certificates" element={<ProtectedRoute><div className="p-8"><h1 className="text-2xl font-bold">My Certificates</h1><p className="text-gray-500 mt-2">Certificates dashboard coming soon</p></div></ProtectedRoute>} />
+              <Route path="dashboard/certificates" element={<ProtectedRoute><MyCertificates /></ProtectedRoute>} />
               <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             </Route>
 

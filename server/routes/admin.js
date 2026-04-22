@@ -16,6 +16,16 @@ import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 import { protect, authorize } from '../middleware/auth.js';
 import sendEmail from '../utils/sendEmail.js';
+import {
+  createFeedbackForm,
+  updateFeedbackForm,
+  getAllFeedbackForms,
+  getFeedbackFormById,
+  deleteFeedbackForm,
+  toggleFeedbackForm,
+  getFormResponses,
+  resetSubmission,
+} from './feedbackController.js';
 
 const router = express.Router();
 
@@ -1644,6 +1654,18 @@ router.delete('/live-courses/:id', protect, authorize('admin', 'instructor'), as
   }
 });
 
+import CohortApplication from '../models/CohortApplication.js';
+router.get('/live-courses/:id/applications', protect, authorize('admin'), async (req, res) => {
+  try {
+    const applications = await CohortApplication.find({ liveCourse: req.params.id })
+      .populate('user', 'name avatar email')
+      .sort('-createdAt');
+    res.status(200).json({ success: true, count: applications.length, data: applications });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==============================
 // ADMIN COURSE MANAGEMENT
 // All statuses returned (draft + published) — admin sees everything.
@@ -1824,5 +1846,18 @@ router.delete('/courses/:id', protect, authorize('admin'), async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// ==============================
+// FEEDBACK FORMS (Admin)
+// ==============================
+
+router.post('/feedback-forms', protect, authorize('admin'), createFeedbackForm);
+router.put('/feedback-forms/:id', protect, authorize('admin'), updateFeedbackForm);
+router.get('/feedback-forms', protect, authorize('admin'), getAllFeedbackForms);
+router.get('/feedback-forms/:id', protect, authorize('admin'), getFeedbackFormById);
+router.delete('/feedback-forms/:id', protect, authorize('admin'), deleteFeedbackForm);
+router.patch('/feedback-forms/:id/toggle', protect, authorize('admin'), toggleFeedbackForm);
+router.get('/feedback-forms/:id/responses', protect, authorize('admin'), getFormResponses);
+router.delete('/feedback-forms/:id/submissions/:subId/reset', protect, authorize('admin'), resetSubmission);
 
 export default router;

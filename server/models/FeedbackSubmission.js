@@ -1,0 +1,59 @@
+import mongoose from 'mongoose';
+
+const responseSchema = new mongoose.Schema({
+  questionIndex: {
+    type: Number,
+    required: true,
+  },
+  answer: {
+    type: mongoose.Schema.Types.Mixed,
+    required: true,
+  },
+}, { _id: false });
+
+const feedbackSubmissionSchema = new mongoose.Schema({
+  feedbackForm: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'FeedbackForm',
+    required: [true, 'Feedback form reference is required'],
+  },
+  user: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    required: [true, 'User reference is required'],
+  },
+  liveCourse: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'LiveCourse',
+    required: [true, 'Live course reference is required'],
+  },
+  enrollment: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Enrollment',
+    required: [true, 'Enrollment reference is required'],
+  },
+  responses: {
+    type: [responseSchema],
+    validate: {
+      validator: function (arr) {
+        return arr && arr.length > 0;
+      },
+      message: 'At least one response is required',
+    },
+  },
+  submittedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  timestamps: true,
+});
+
+// Prevent duplicate submissions: one submission per user per form
+feedbackSubmissionSchema.index({ feedbackForm: 1, user: 1 }, { unique: true });
+
+// Fast lookup by liveCourse + user
+feedbackSubmissionSchema.index({ liveCourse: 1, user: 1 });
+
+const FeedbackSubmission = mongoose.model('FeedbackSubmission', feedbackSubmissionSchema);
+export default FeedbackSubmission;

@@ -17,11 +17,12 @@ export const authLimiter = rateLimit({
 
 /**
  * General API rate limiter.
- * Limits to 100 requests per 15-minute window.
+ * 500 req / 15-min window — generous enough for dev hot-reload,
+ * still protective in production. Tighten for prod if needed.
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

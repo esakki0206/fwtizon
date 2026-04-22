@@ -45,6 +45,7 @@ import adminRoutes from './routes/admin.js';
 import notificationsRoutes from './routes/notifications.js';
 import assignmentRoutes from './routes/assignments.js';
 import certificateRoutes, { receiptsRouter } from './routes/certificates.js';
+import feedbackRoutes from './routes/feedback.js';
 
 // ── Mount Routers ──
 app.use('/api/auth', authRoutes);
@@ -59,6 +60,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/receipts', receiptsRouter);
+app.use('/api/feedback', feedbackRoutes);
 app.use('/api', extrasRoutes);
 
 // ── Health Check ──

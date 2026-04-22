@@ -16,7 +16,16 @@ const LiveCourseDetail = () => {
   const navigate = useNavigate();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ fullName: user?.name || '', email: user?.email || '', phone: '', message: '' });
+  const [formData, setFormData] = useState({ 
+    fullName: user?.name || '', 
+    email: user?.email || '', 
+    phone: '', 
+    whatsappNumber: '',
+    gender: 'Prefer not to say',
+    courseDepartment: '',
+    experienceLevel: '',
+    message: '' 
+  });
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -58,6 +67,17 @@ const LiveCourseDetail = () => {
   const isFull = course.currentEnrollments >= course.maxStudents;
   const isEnrolledLocally = user?.enrollments?.includes(course._id) || false;
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   const handleEnrollButton = () => {
     if (!user) {
       toast.error('Please log in to apply for this course.');
@@ -70,8 +90,8 @@ const LiveCourseDetail = () => {
 
   const processPayment = async (e) => {
     e.preventDefault();
-    if (!formData.fullName || !formData.email || !formData.phone) {
-      return toast.error("Please fill all required fields");
+    if (!formData.fullName || !formData.email || !formData.phone || !formData.whatsappNumber) {
+      return toast.error("Please fill all required fields (Name, Email, Mobile, WhatsApp)");
     }
     setIsModalOpen(false);
 
@@ -95,8 +115,15 @@ const LiveCourseDetail = () => {
       }
 
       toast.dismiss(toastId);
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        toast.error('Payment SDK failed to load. Please check your internet connection.');
+        return;
+      }
+
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key: orderData.data.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.data.amount,
         currency: 'INR',
         name: 'Fwtizon Academy',
@@ -156,17 +183,27 @@ const LiveCourseDetail = () => {
               </p>
 
               {/* Instructor Mini Profile */}
-              <div className="flex items-center mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-800/80">
+              <div className="flex items-start mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-800/80">
                 <img
-                  src={course.instructor?.avatar || `https://ui-avatars.com/api/?name=${course.instructor?.name || 'Instructor'}&background=4f46e5&color=fff`}
-                  alt={course.instructor?.name || 'Instructor'}
-                  className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-white dark:border-gray-800 shadow-md object-cover"
+                  src={course.instructorImage || course.instructor?.avatar || `https://ui-avatars.com/api/?name=${course.instructorName || course.instructor?.name || 'Instructor'}&background=4f46e5&color=fff`}
+                  alt={course.instructorName || course.instructor?.name || 'Instructor'}
+                  className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white dark:border-gray-800 shadow-md object-cover mt-1"
                 />
-                <div className="ml-3 md:ml-4 flex flex-col">
+                <div className="ml-3 md:ml-4 flex flex-col flex-1">
                   <span className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Instructor</span>
-                  <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white">
-                    {course.instructor?.name || 'Expert Instructor'}
+                  <span className="text-base md:text-lg font-bold text-gray-900 dark:text-white">
+                    {course.instructorName || course.instructor?.name || 'Expert Instructor'}
                   </span>
+                  {(course.instructorDesignation) && (
+                    <span className="text-sm text-primary-600 dark:text-primary-400 font-medium mb-1">
+                      {course.instructorDesignation}
+                    </span>
+                  )}
+                  {course.instructorBio && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 leading-relaxed max-w-2xl">
+                      {course.instructorBio}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -415,23 +452,58 @@ const LiveCourseDetail = () => {
                 <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">Complete checkout for <strong>{course.title}</strong>.</p>
 
                 <form onSubmit={processPayment} className="space-y-3 md:space-y-4">
-                  <div>
-                    <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name <span className="text-red-500">*</span></label>
-                    <input type="text" required value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-red-500">*</span></label>
+                      <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-red-500">*</span></label>
-                    <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mobile No <span className="text-red-500">*</span></label>
+                      <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">WhatsApp <span className="text-red-500">*</span></label>
+                      <input type="tel" required value={formData.whatsappNumber} onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gender <span className="text-red-500">*</span></label>
+                      <select required value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number <span className="text-red-500">*</span></label>
-                    <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Department (Optional)</label>
+                      <input type="text" value={formData.courseDepartment} onChange={e => setFormData({ ...formData, courseDepartment: e.target.value })} placeholder="e.g. Computer Science" className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Experience Level (Optional)</label>
+                      <select value={formData.experienceLevel} onChange={e => setFormData({ ...formData, experienceLevel: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors">
+                        <option value="">Select Level</option>
+                        <option value="Student">Student</option>
+                        <option value="Fresher">Fresher</option>
+                        <option value="1-3 Years">1-3 Years</option>
+                        <option value="3+ Years">3+ Years</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div className="pt-4 md:pt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 md:py-3.5 rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs md:text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition">Cancel</button>
                     <button type="submit" className="flex-1 px-4 py-2.5 md:py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs md:text-sm rounded-lg md:rounded-xl transition shadow-xl shadow-primary-600/20 active:scale-[0.98]">
-                      Pay ₹{course.price}
+                      Apply & Pay ₹{course.price}
                     </button>
                   </div>
                 </form>

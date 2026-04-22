@@ -14,6 +14,10 @@ const liveCourseSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  instructorName: String,
+  instructorImage: String,
+  instructorDesignation: String,
+  instructorBio: String,
   price: {
     type: Number,
     required: true,
@@ -52,6 +56,14 @@ const liveCourseSchema = new mongoose.Schema({
   currentEnrollments: {
     type: Number,
     default: 0,
+  },
+  domain: {
+    type: String,
+    default: 'Professional Development',
+  },
+  areaOfExpertise: {
+    type: String,
+    default: 'Specialized Training',
   },
   duration: String,
   thumbnail: {

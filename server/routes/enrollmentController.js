@@ -7,6 +7,7 @@ import Notification from '../models/Notification.js';
 import Certificate from '../models/Certificate.js';
 import Receipt from '../models/Receipt.js';
 import Counter from '../models/Counter.js';
+import CohortApplication from '../models/CohortApplication.js';
 import Module from '../models/Module.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { generateReceiptPDF } from '../utils/generateReceiptPDF.js';
@@ -147,6 +148,11 @@ export const verifyPayment = async (req, res) => {
       email,
       phone,
       message,
+      // Cohort application specific fields
+      gender,
+      whatsappNumber,
+      courseDepartment,
+      experienceLevel,
     } = req.body;
 
     if (!req.user?.id) {
@@ -235,18 +241,49 @@ export const verifyPayment = async (req, res) => {
 
     const enrollment = await Enrollment.create(enrollData);
 
+    // If it's a live course, also save the detailed application form
+    if (liveCourseId && gender && whatsappNumber) {
+      try {
+        await CohortApplication.create({
+          user: req.user.id,
+          liveCourse: liveCourseId,
+          fullName: fullName || req.user.name,
+          email: email || req.user.email,
+          mobileNumber: phone,
+          whatsappNumber,
+          gender,
+          courseDepartment,
+          experienceLevel,
+          status: 'Enrolled'
+        });
+      } catch (appErr) {
+        console.error('Failed to create cohort application:', appErr);
+        // Do not fail the whole payment flow if just the application record fails
+      }
+    }
+
     // Auto-generate Receipt
     try {
-      const receiptId = `RCPT-${Date.now()}`;
+      // Generate sequential receipt number using Counter
+      const serialNumber = await Counter.getNextSequence('receipts');
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const fiscalStartYear = month >= 4 ? year : year - 1;
+      const fiscalYear = `${fiscalStartYear}/${String(fiscalStartYear + 1).slice(-2)}`;
+      const paddedSerial = String(serialNumber).padStart(2, '0');
+      const receiptId = `FWT-iZON-RECEIPT-${fiscalYear}-${paddedSerial}`;
+
       const receiptData = {
         receiptId,
+        serialNumber,
         userName: fullName || req.user.name || 'Student',
         userEmail: email || req.user.email,
         courseName: enrolledItem.title,
         amount: enrolledItem.price,
         paymentId: razorpay_payment_id || `mock_pay_${Date.now()}`,
         orderId: razorpay_order_id || 'N/A',
-        date: new Date(),
+        date: now,
         status: 'SUCCESS'
       };
 

@@ -7,11 +7,13 @@ import { FiPlus, FiVideo, FiUsers, FiMessageCircle, FiTrash2, FiUploadCloud } fr
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 
 const LiveCourseManager = () => {
-  const [view, setView] = useState('list'); // list | editor
+  const [view, setView] = useState('list'); // list | editor | applications
   const [liveCourses, setLiveCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [editingCourse, setEditingCourse] = useState(null);
+  const [applications, setApplications] = useState([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [formData, setFormData] = useState({});
 
   useEffect(() => {
@@ -43,7 +45,11 @@ const LiveCourseManager = () => {
       whatsappGroup: '',
       maxStudents: 30,
       status: 'Draft',
-      thumbnail: 'no-photo-live.jpg'
+      thumbnail: 'no-photo-live.jpg',
+      instructorName: '',
+      instructorImage: '',
+      instructorDesignation: '',
+      instructorBio: ''
     });
     setView('editor');
   };
@@ -60,7 +66,11 @@ const LiveCourseManager = () => {
       whatsappGroup: course.whatsappGroup || '',
       maxStudents: course.maxStudents || 30,
       status: course.status || 'Draft',
-      thumbnail: course.thumbnail || 'no-photo-live.jpg'
+      thumbnail: course.thumbnail || 'no-photo-live.jpg',
+      instructorName: course.instructorName || '',
+      instructorImage: course.instructorImage || '',
+      instructorDesignation: course.instructorDesignation || '',
+      instructorBio: course.instructorBio || ''
     });
     setView('editor');
   };
@@ -84,6 +94,23 @@ const LiveCourseManager = () => {
     }
   };
 
+  const handleUploadInstructorImage = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formDataUpload = new FormData();
+    formDataUpload.append('file', file);
+    
+    const toastId = toast.loading('Uploading instructor image...');
+    try {
+      const res = await axios.post('/api/upload', formDataUpload);
+      setFormData(prev => ({ ...prev, instructorImage: res.data.url }));
+      toast.success('Instructor image uploaded successfully', { id: toastId });
+    } catch (err) {
+      toast.error('Upload failed', { id: toastId });
+    }
+  };
+
   const handleDelete = async (e, id) => {
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to delete this live cohort?')) return;
@@ -93,6 +120,21 @@ const LiveCourseManager = () => {
       setLiveCourses(liveCourses.filter(c => c._id !== id));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete cohort');
+    }
+  };
+
+  const handleViewApplications = async (e, course) => {
+    e.stopPropagation();
+    setEditingCourse(course._id);
+    setView('applications');
+    setApplicationsLoading(true);
+    try {
+      const res = await axios.get(`/api/admin/live-courses/${course._id}/applications`);
+      setApplications(res.data.data || []);
+    } catch (err) {
+      toast.error('Failed to load applications');
+    } finally {
+      setApplicationsLoading(false);
     }
   };
 
@@ -126,7 +168,10 @@ const LiveCourseManager = () => {
       </span>
     )},
     { header: 'Actions', id: 'actions', cell: (row) => (
-      <Button variant="destructive" size="sm" onClick={(e) => handleDelete(e, row._id)}>Delete</Button>
+      <div className="flex space-x-2">
+        <Button variant="outline" size="sm" onClick={(e) => handleViewApplications(e, row)}>Applications</Button>
+        <Button variant="destructive" size="sm" onClick={(e) => handleDelete(e, row._id)}>Delete</Button>
+      </div>
     )}
   ];
 
@@ -209,6 +254,42 @@ const LiveCourseManager = () => {
                    </div>
                  </CardContent>
                </Card>
+               
+               <Card>
+                 <CardHeader><CardTitle>Instructor Profile</CardTitle></CardHeader>
+                 <CardContent className="space-y-4">
+                   <div>
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Instructor Name</label>
+                     <input type="text" value={formData.instructorName} onChange={e => setFormData({...formData, instructorName: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="e.g. Dr. Jane Doe" />
+                   </div>
+                   <div>
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Designation / Role</label>
+                     <input type="text" value={formData.instructorDesignation} onChange={e => setFormData({...formData, instructorDesignation: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="e.g. Senior AI Engineer" />
+                   </div>
+                   <div>
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Instructor Bio</label>
+                     <textarea value={formData.instructorBio} onChange={e => setFormData({...formData, instructorBio: e.target.value})} className="mt-1 w-full h-20 resize-none bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Short biography about the instructor..." />
+                   </div>
+                   <div>
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Instructor Image</label>
+                     <div className="flex items-center space-x-4">
+                       {formData.instructorImage ? (
+                         <img src={formData.instructorImage} alt="Instructor preview" className="w-16 h-16 rounded-full object-cover shadow-sm border border-gray-200 dark:border-gray-700" />
+                       ) : (
+                         <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center text-gray-400">
+                           <FiUsers size={20} />
+                         </div>
+                       )}
+                       <div>
+                         <input type="file" id="instructor-upload" className="hidden" onChange={handleUploadInstructorImage} accept="image/*" />
+                         <label htmlFor="instructor-upload" className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                           <FiUploadCloud className="mr-2" /> Upload Photo
+                         </label>
+                       </div>
+                     </div>
+                   </div>
+                 </CardContent>
+               </Card>
             </div>
             
             <div className="space-y-6">
@@ -264,6 +345,68 @@ const LiveCourseManager = () => {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {view === 'applications' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Cohort Applications</h2>
+              <p className="text-gray-500">Viewing applications for the selected cohort.</p>
+            </div>
+            <Button variant="outline" onClick={() => setView('list')}>Back to Cohorts</Button>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              {applicationsLoading ? (
+                <div className="p-8 text-center text-gray-500">Loading applications...</div>
+              ) : applications.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <FiUsers className="mx-auto mb-4 text-gray-300 dark:text-gray-600" size={48} />
+                  No applications received yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800/50">
+                      <tr>
+                        <th className="px-6 py-4 font-bold">Applicant</th>
+                        <th className="px-6 py-4 font-bold">Contact</th>
+                        <th className="px-6 py-4 font-bold">Gender</th>
+                        <th className="px-6 py-4 font-bold">Background</th>
+                        <th className="px-6 py-4 font-bold">Applied On</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {applications.map((app) => (
+                        <tr key={app._id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-gray-900 dark:text-white">{app.fullName}</div>
+                            <div className="text-gray-500 text-xs">{app.email}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-gray-900 dark:text-white">Mob: {app.mobileNumber}</div>
+                            <div className="text-gray-500 text-xs">WA: {app.whatsappNumber}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs">{app.gender}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-gray-900 dark:text-white text-xs">{app.courseDepartment || 'N/A'}</div>
+                            <div className="text-gray-500 text-xs">{app.experienceLevel || 'N/A'}</div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-500 text-xs">
+                            {new Date(app.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

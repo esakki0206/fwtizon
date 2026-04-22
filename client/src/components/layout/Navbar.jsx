@@ -5,6 +5,8 @@ import { FiSun, FiMoon, FiMenu, FiX, FiSearch, FiUser, FiBookOpen, FiAward, FiSe
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationDropdown from './NotificationDropdown';
+import fwtLogoBlack from '../../assets/FwT - Logo - Black Tagline.png';
+import fwtLogoWhite from '../../assets/FwT - Logo - White Tagline.png';
 
 const categories = ['Development', 'Business', 'IT & Software', 'Design', 'Marketing', 'Personal Development'];
 
@@ -54,8 +56,9 @@ const Navbar = () => {
 
           {/* Logo */}
           <div className="flex-shrink-0 flex items-center">
-            <Link to="/" className="text-2xl font-black bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent tracking-tight">
-              Fwtzion
+            <Link to="/" className="flex items-center">
+              <img src={fwtLogoBlack} alt="FWT Logo" className="h-8 md:h-10 w-auto block dark:hidden object-contain" />
+              <img src={fwtLogoWhite} alt="FWT Logo" className="h-8 md:h-10 w-auto hidden dark:block object-contain" />
             </Link>
           </div>
 

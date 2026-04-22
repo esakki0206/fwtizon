@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiVideo, FiCalendar, FiUsers, FiCheckCircle, FiClock, FiUploadCloud, FiLink } from 'react-icons/fi';
+import { FiVideo, FiCalendar, FiUsers, FiClock } from 'react-icons/fi';
 import axios from 'axios';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const LiveCohorts = () => {
@@ -23,110 +22,6 @@ const LiveCohorts = () => {
     };
     fetchLiveCourses();
   }, []);
-
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
-  const handleEnroll = (cohort) => {
-    if (!user) {
-      toast.error('Please login to enroll in a live masterclass', { duration: 4000 });
-      navigate('/login');
-      return;
-    }
-
-    setSelectedCohort(cohort);
-    setFormData(prev => ({ ...prev, fullName: user.name || '', email: user.email || '' }));
-    setIsModalOpen(true);
-  };
-
-  const processPayment = async (e) => {
-    e.preventDefault();
-    if (!formData.fullName || !formData.email || !formData.phone) {
-      return toast.error("Please fill all required fields");
-    }
-    setIsModalOpen(false);
-
-    const toastId = toast.loading('Initializing secure checkout...');
-
-    try {
-      const { data: orderData } = await axios.post('/api/enroll/create-order', { liveCourseId: selectedCohort._id });
-
-      // Detect mock order (testing without real Razorpay keys)
-      const isMockOrder = orderData.data.id?.startsWith('order_mock_');
-
-      if (isMockOrder) {
-        // Mock mode: skip Razorpay popup and directly verify + enroll
-        toast.loading('Processing mock enrollment...', { id: toastId });
-        try {
-          await axios.post('/api/enroll/verify-payment', {
-            razorpay_order_id: orderData.data.id,
-            razorpay_payment_id: `mock_pay_${Date.now()}`,
-            razorpay_signature: 'mock_signature',
-            liveCourseId: selectedCohort._id,
-            ...formData
-          });
-          toast.success('Enrolled successfully! Redirecting to dashboard...', { id: toastId });
-          setTimeout(() => window.location.href = '/dashboard', 1000);
-        } catch (err) {
-          toast.error(err.response?.data?.message || 'Enrollment failed', { id: toastId });
-        }
-        return;
-      }
-
-      // Real Razorpay flow
-      toast.dismiss(toastId);
-
-      const loaded = await loadRazorpayScript();
-      if (!loaded) {
-        toast.error('Razorpay SDK failed to load. Are you online?');
-        return;
-      }
-
-      const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_YOUR_KEY_ID',
-        amount: orderData.data.amount,
-        currency: 'INR',
-        name: 'Fwtizon Academy',
-        description: `Enrollment in ${selectedCohort.title}`,
-        image: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-        order_id: orderData.data.id,
-        handler: async function (response) {
-          const verifyingToast = toast.loading('Verifying secure payment...');
-          try {
-            await axios.post('/api/enroll/verify-payment', {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              liveCourseId: selectedCohort._id,
-              ...formData
-            });
-            toast.success('Enrolled successfully! Redirecting...', { id: verifyingToast });
-            setTimeout(() => window.location.href = '/dashboard', 1000);
-          } catch (err) {
-            toast.error(err.response?.data?.message || 'Payment verification failed', { id: verifyingToast });
-          }
-        },
-        prefill: {
-          name: formData.fullName || user.name || '',
-          email: formData.email || user.email || '',
-          contact: formData.phone || '',
-        },
-        theme: { color: '#4f46e5' }
-      };
-
-      const paymentObject = new window.Razorpay(options);
-      paymentObject.open();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to initialize payment', { id: toastId });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-10 md:py-16">
@@ -210,7 +105,7 @@ const LiveCohorts = () => {
                   <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end mt-auto gap-4">
                     <div className="flex flex-col items-center sm:items-start">
                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Enrollment</span>
-                      <div className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">${cohort.price}</div>
+                      <div className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">₹{cohort.price}</div>
                     </div>
                     <Link
                       to={`/live-course/${cohort._id}`}

@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
-import { FiBookOpen, FiActivity, FiAward, FiCompass, FiPlayCircle, FiClock, FiVideo, FiBell, FiArrowRight } from 'react-icons/fi';
+import { FiBookOpen, FiActivity, FiAward, FiCompass, FiPlayCircle, FiClock, FiVideo, FiBell, FiArrowRight, FiLock, FiMessageSquare, FiDownload, FiCheckCircle } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import CourseCard from '../../components/common/CourseCard';
 import { Button } from '../../components/ui/button';
+import FeedbackFormModal from '../../components/common/FeedbackFormModal';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -14,6 +15,10 @@ const Dashboard = () => {
   const [liveCourses, setLiveCourses] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [feedbackStatuses, setFeedbackStatuses] = useState({});
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [activeFeedbackForm, setActiveFeedbackForm] = useState(null);
+  const [activeLiveCourseId, setActiveLiveCourseId] = useState(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -34,6 +39,42 @@ const Dashboard = () => {
     };
     fetchDashboardData();
   }, []);
+
+  // Fetch feedback statuses for all live enrollments
+  const fetchFeedbackStatuses = useCallback(async (liveEnrolls) => {
+    const statuses = {};
+    await Promise.all(
+      liveEnrolls.map(async (en) => {
+        if (!en.liveCourse?._id) return;
+        try {
+          const res = await axios.get(`/api/feedback/status/${en.liveCourse._id}`);
+          statuses[en.liveCourse._id] = res.data.data;
+        } catch { /* silent */ }
+      })
+    );
+    setFeedbackStatuses(statuses);
+  }, []);
+
+  useEffect(() => {
+    const liveEnrolls = enrollments.filter(e => e.liveCourse);
+    if (liveEnrolls.length > 0) fetchFeedbackStatuses(liveEnrolls);
+  }, [enrollments, fetchFeedbackStatuses]);
+
+  const openFeedbackModal = async (liveCourseId) => {
+    try {
+      const res = await axios.get(`/api/feedback/form/${liveCourseId}`);
+      if (res.data.data?.isSubmitted) { toast('Already submitted!'); return; }
+      if (!res.data.data?.isUnlocked) { toast('Form not available yet'); return; }
+      setActiveFeedbackForm(res.data.data);
+      setActiveLiveCourseId(liveCourseId);
+      setFeedbackModalOpen(true);
+    } catch (err) { toast.error(err.response?.data?.message || 'Could not load feedback form'); }
+  };
+
+  const handleFeedbackSuccess = () => {
+    const liveEnrolls = enrollments.filter(e => e.liveCourse);
+    fetchFeedbackStatuses(liveEnrolls);
+  };
 
   if (loading) return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center dark:bg-gray-950">
@@ -274,7 +315,9 @@ const Dashboard = () => {
               <FiVideo className="mr-2 text-accent-500" size={20} /> My Live Masterclasses
             </h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {liveEnrollments.map((en) => (
+              {liveEnrollments.map((en) => {
+                const fbStatus = feedbackStatuses[en.liveCourse?._id];
+                return (
                 <div key={en._id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
@@ -282,7 +325,7 @@ const Dashboard = () => {
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 leading-snug line-clamp-2">{en.liveCourse?.title}</h3>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 mb-6">Starts: {new Date(en.liveCourse?.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                  <p className="text-xs text-gray-500 mt-2 mb-4">Starts: {new Date(en.liveCourse?.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                   
                   <div className="flex flex-col space-y-3">
                     {en.liveCourse?.zoomLink && (
@@ -295,12 +338,50 @@ const Dashboard = () => {
                         <FiCompass className="mr-2" /> WhatsApp Community
                       </a>
                     )}
+
+                    {/* Feedback / Certificate Section */}
+                    {fbStatus?.formAvailable && (
+                      <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                        {fbStatus.isSubmitted ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center text-xs text-green-600 dark:text-green-400 font-bold">
+                              <FiCheckCircle className="mr-1.5" size={14}/> Feedback submitted
+                            </div>
+                            {fbStatus.certificate && (
+                              <a href={fbStatus.certificate.downloadUrl}
+                                className="w-full flex items-center justify-center py-2.5 px-4 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
+                                <FiDownload className="mr-2" /> Download Certificate
+                              </a>
+                            )}
+                          </div>
+                        ) : fbStatus.isUnlocked ? (
+                          <button onClick={() => openFeedbackModal(en.liveCourse._id)}
+                            className="w-full flex items-center justify-center py-2.5 px-4 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-bold rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors border border-amber-200 dark:border-amber-800">
+                            <FiMessageSquare className="mr-2" /> Give Feedback & Get Certificate
+                          </button>
+                        ) : (
+                          <div className="flex items-center text-xs text-gray-400 font-medium py-2">
+                            <FiLock className="mr-1.5" size={12}/> Feedback available after course completion
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
+
+        {/* Feedback Modal */}
+        <FeedbackFormModal
+          isOpen={feedbackModalOpen}
+          onClose={() => { setFeedbackModalOpen(false); setActiveFeedbackForm(null); }}
+          formData={activeFeedbackForm}
+          liveCourseId={activeLiveCourseId}
+          onSuccess={handleFeedbackSuccess}
+        />
 
       </div>
     </div>

@@ -4,6 +4,60 @@ import Enrollment from '../models/Enrollment.js';
 import Counter from '../models/Counter.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import { getSignedCloudinaryPdfUrl } from '../utils/cloudinaryAsset.js';
+
+const sanitizePdfFilename = (value, fallback) => {
+  const safeValue = String(value || fallback || 'document')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return safeValue || fallback || 'document';
+};
+
+const buildCertificateLinks = (certificateId) => ({
+  viewUrl: `/api/certificates/${certificateId}/view`,
+  downloadUrl: `/api/certificates/${certificateId}/download`,
+});
+
+const buildReceiptLinks = (receiptId) => ({
+  viewUrl: `/api/receipts/${receiptId}/view`,
+  downloadUrl: `/api/receipts/${receiptId}/download`,
+});
+
+const mapCertificateDocument = (certificate) => {
+  const data = certificate.toObject ? certificate.toObject() : certificate;
+  return {
+    ...data,
+    ...buildCertificateLinks(data.certificateId),
+  };
+};
+
+const mapReceiptDocument = (receipt) => {
+  const data = receipt.toObject ? receipt.toObject() : receipt;
+  return {
+    ...data,
+    ...buildReceiptLinks(data.receiptId),
+  };
+};
+
+const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
+  const signedUrl = getSignedCloudinaryPdfUrl(fileUrl);
+  const response = await fetch(signedUrl);
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`Failed to fetch PDF from Cloudinary (${response.status})${details ? `: ${details.slice(0, 200)}` : ''}`);
+  }
+
+  const pdfBuffer = Buffer.from(await response.arrayBuffer());
+  const safeFilename = sanitizePdfFilename(filename, 'document.pdf');
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Length', String(pdfBuffer.length));
+  res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
+  res.status(200).send(pdfBuffer);
+};
 
 // ==============================
 // STUDENT CERTIFICATES
@@ -18,7 +72,6 @@ export const generateCertificate = async (req, res) => {
   try {
     const { enrollmentId } = req.body;
 
-    // Find the enrollment to verify ownership and completion
     const enrollment = await Enrollment.findById(enrollmentId)
       .populate('course')
       .populate('liveCourse');
@@ -35,24 +88,22 @@ export const generateCertificate = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Course is not completed yet.' });
     }
 
-    // Check if certificate already exists
     const courseType = enrollment.course ? 'course' : 'liveCourse';
     const courseId = enrollment[courseType]._id;
 
     const existingCert = await Certificate.findOne({
       user: req.user.id,
-      [courseType]: courseId
+      [courseType]: courseId,
     });
 
     if (existingCert) {
       return res.status(400).json({
         success: false,
         message: 'Certificate already generated',
-        data: existingCert
+        data: mapCertificateDocument(existingCert),
       });
     }
 
-    // Prepare data for PDF generation
     const courseRef = enrollment[courseType];
     const serialNumber = await Counter.getNextSequence('certificates');
     const paddedSerial = String(serialNumber).padStart(4, '0');
@@ -66,20 +117,16 @@ export const generateCertificate = async (req, res) => {
       areaOfExpertise: 'Specialized Training',
       completionDate: enrollment.completedAt || new Date(),
       certificateId,
-      serialNumber
+      serialNumber,
     };
 
-    // Generate PDF Buffer
     const pdfBuffer = await generateCertificatePDF(pdfData);
-
-    // Upload to Cloudinary
     const fileUrl = await uploadPdfToCloudinary(
       pdfBuffer,
       `${certificateId}-${req.user.id}`,
       'fwtion/certificates'
     );
 
-    // Save to database
     const certificate = await Certificate.create({
       certificateId,
       user: req.user.id,
@@ -93,14 +140,13 @@ export const generateCertificate = async (req, res) => {
       completionDate: pdfData.completionDate,
       serialNumber,
       fileUrl,
-      enrollment: enrollment._id
+      enrollment: enrollment._id,
     });
 
-    // Link back to enrollment
     enrollment.certificateId = certificate.certificateId;
     await enrollment.save({ validateBeforeSave: false });
 
-    res.status(201).json({ success: true, data: certificate });
+    res.status(201).json({ success: true, data: mapCertificateDocument(certificate) });
   } catch (error) {
     console.error('Certificate generation error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate certificate' });
@@ -119,7 +165,11 @@ export const getMyCertificates = async (req, res) => {
       .populate('liveCourse', 'title thumbnail category')
       .sort('-issueDate');
 
-    res.status(200).json({ success: true, count: certificates.length, data: certificates });
+    res.status(200).json({
+      success: true,
+      count: certificates.length,
+      data: certificates.map(mapCertificateDocument),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -127,7 +177,6 @@ export const getMyCertificates = async (req, res) => {
 
 export const getCertificatesByUserId = async (req, res) => {
   try {
-    // Security mapping constraint
     if (req.user.id !== req.params.userId && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized to view these certificates' });
     }
@@ -137,7 +186,11 @@ export const getCertificatesByUserId = async (req, res) => {
       .populate('liveCourse', 'title thumbnail category')
       .sort('-issueDate');
 
-    res.status(200).json({ success: true, count: certificates.length, data: certificates });
+    res.status(200).json({
+      success: true,
+      count: certificates.length,
+      data: certificates.map(mapCertificateDocument),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -159,9 +212,29 @@ export const getCertificateById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Certificate not found' });
     }
 
-    res.status(200).json({ success: true, data: certificate });
+    res.status(200).json({ success: true, data: mapCertificateDocument(certificate) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const serveCertificatePDF = async (req, res) => {
+  try {
+    const certificate = await Certificate.findOne({ certificateId: req.params.certificateId })
+      .select('certificateId fileUrl');
+
+    if (!certificate) {
+      return res.status(404).json({ success: false, message: 'Certificate not found' });
+    }
+
+    const disposition = req.path.endsWith('/download') ? 'attachment' : 'inline';
+    await sendCloudinaryPdf(res, certificate.fileUrl, {
+      filename: `${certificate.certificateId}.pdf`,
+      disposition,
+    });
+  } catch (error) {
+    console.error('Serve certificate PDF error:', error);
+    res.status(500).json({ success: false, message: 'Failed to serve certificate PDF' });
   }
 };
 
@@ -181,8 +254,36 @@ export const getMyReceipts = async (req, res) => {
       .populate('liveCourse', 'title')
       .sort('-createdAt');
 
-    res.status(200).json({ success: true, count: receipts.length, data: receipts });
+    res.status(200).json({
+      success: true,
+      count: receipts.length,
+      data: receipts.map(mapReceiptDocument),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const serveReceiptPDF = async (req, res) => {
+  try {
+    const receipt = await Receipt.findOne({ receiptId: req.params.receiptId })
+      .select('receiptId fileUrl user');
+
+    if (!receipt) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+
+    if (!req.user || (receipt.user.toString() !== req.user.id && req.user.role !== 'admin')) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view this receipt' });
+    }
+
+    const disposition = req.path.endsWith('/download') ? 'attachment' : 'inline';
+    await sendCloudinaryPdf(res, receipt.fileUrl, {
+      filename: `${receipt.receiptId}.pdf`,
+      disposition,
+    });
+  } catch (error) {
+    console.error('Serve receipt PDF error:', error);
+    res.status(500).json({ success: false, message: 'Failed to serve receipt PDF' });
   }
 };

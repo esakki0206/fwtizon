@@ -1,6 +1,7 @@
 import express from 'express';
 import { 
   generateCertificate, 
+  getMyCertificates,
   getCertificatesByUserId,
   getCertificateById,
   getMyReceipts,
@@ -31,5 +32,5 @@ export default router;
 // Explicit Receipts router to avoid mapping /api/certificates to receipts
 export const receiptsRouter = express.Router();
 receiptsRouter.get('/my', protect, getMyReceipts);
-receiptsRouter.get('/:receiptId/view', serveReceiptPDF);
-receiptsRouter.get('/:receiptId/download', serveReceiptPDF);
+receiptsRouter.get('/:receiptId/view', protect, serveReceiptPDF);
+receiptsRouter.get('/:receiptId/download', protect, serveReceiptPDF);

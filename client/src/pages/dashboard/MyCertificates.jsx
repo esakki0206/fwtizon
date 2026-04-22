@@ -50,7 +50,14 @@ const MyCertificates = () => {
   };
 
   const handleDownload = (url) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
+    if (!url) return;
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   return (
@@ -166,7 +173,7 @@ const MyCertificates = () => {
                           </p>
                           <div className="flex items-center gap-2 mt-auto">
                             <button 
-                              onClick={() => handleDownload(cert.fileUrl)}
+                              onClick={() => handleDownload(cert.downloadUrl || `/api/certificates/${cert.certificateId}/download`)}
                               className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 rounded-xl text-sm font-semibold flex items-center justify-center transition-colors"
                             >
                               <FiDownload className="mr-2" /> Download PDF
@@ -232,7 +239,7 @@ const MyCertificates = () => {
                           </div>
                         </div>
                         <button 
-                          onClick={() => handleDownload(receipt.fileUrl)}
+                          onClick={() => handleDownload(receipt.downloadUrl || `/api/receipts/${receipt.receiptId}/download`)}
                           className="mt-5 w-full border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center transition-colors"
                         >
                           <FiDownload className="mr-2" /> Download Receipt

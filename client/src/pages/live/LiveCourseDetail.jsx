@@ -99,7 +99,7 @@ const LiveCourseDetail = () => {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.data.amount,
         currency: 'INR',
-        name: 'Fwtion Academy',
+        name: 'Fwtizon Academy',
         description: `Enrollment in ${course.title}`,
         image: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
         order_id: orderData.data.id,

@@ -176,7 +176,7 @@ const Home = () => {
       <section className="py-20 bg-gray-50 dark:bg-gray-900/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-3">Why learn with Fwtion?</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-3">Why learn with Fwtizon?</h2>
             <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto text-base">Everything you need to upskill effectively in an enterprise-grade learning environment.</p>
           </div>
 

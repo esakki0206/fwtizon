@@ -12,7 +12,7 @@ const resolveInstructor = (data) => {
     data?.displayInstructorName ||
     data?.instructorName ||
     data?.instructor?.name ||
-    'Fwtion Academy';
+    'Fwtizon Academy';
 
   const rawPhoto =
     data?.displayInstructorPhoto ||

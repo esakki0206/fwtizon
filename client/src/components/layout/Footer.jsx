@@ -8,7 +8,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-8">
           <div className="col-span-2 md:col-span-1">
             <Link to="/" className="text-xl font-black bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent mb-4 block">
-              Fwtion
+              Fwtizon
             </Link>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-5 leading-relaxed max-w-xs">
               Enterprise-grade learning platform with world-class courses, live cohorts, and professional certifications.
@@ -30,7 +30,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 mt-10 pt-6 flex flex-col md:flex-row justify-between items-center text-xs text-gray-400 dark:text-gray-500">
-          <p>© {new Date().getFullYear()} Fwtion LMS. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Fwtizon LMS. All rights reserved.</p>
           <p className="mt-2 md:mt-0">Built for enterprise learning</p>
         </div>
       </div>

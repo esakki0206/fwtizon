@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AdminTable } from '../../components/admin/AdminTable';
-import { FiTrash2, FiPlus, FiDownload, FiCheckCircle, FiXCircle, FiRefreshCw, FiAward, FiFileText, FiUser, FiLayers } from 'react-icons/fi';
+import { FiTrash2, FiPlus, FiDownload, FiCheckCircle, FiXCircle, FiRefreshCw, FiAward, FiFileText, FiUser, FiLayers, FiExternalLink } from 'react-icons/fi';
 import { Button } from '../../components/ui/button';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -157,7 +157,22 @@ const CertificateManager = () => {
     { header: 'Issue Date', accessorKey: 'issueDate', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.issueDate).toLocaleDateString()}</span> },
     { header: 'Action', accessorKey: 'actions', cell: (row) => (
       <div className="flex space-x-2">
-        {row.fileUrl && <a href={row.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /></a>}
+        <a
+          href={`/api/certificates/${row.certificateId}/view`}
+          target="_blank"
+          rel="noreferrer"
+          title="View PDF"
+          className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
+        >
+          <FiExternalLink size={14} />
+        </a>
+        <a
+          href={`/api/certificates/${row.certificateId}/download`}
+          title="Download PDF"
+          className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
+        >
+          <FiDownload size={14} />
+        </a>
         <Button variant="outline" size="sm" title="Regenerate PDF" onClick={() => handleRegenerate(row._id)}><FiRefreshCw size={14} /></Button>
         <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(row._id, 'cert')}><FiTrash2 size={14} /></Button>
       </div>
@@ -181,7 +196,7 @@ const CertificateManager = () => {
     { header: 'Date', accessorKey: 'createdAt', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.createdAt).toLocaleDateString()}</span> },
     { header: 'Download', accessorKey: 'actions', cell: (row) => (
       <div className="flex space-x-2">
-        {row.fileUrl && <a href={row.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /> Download</a>}
+        <a href={`/api/receipts/${row.receiptId}/download`} className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /> Download</a>
       </div>
     )}
   ];

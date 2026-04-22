@@ -25,9 +25,12 @@ const CertificateView = () => {
   }, [id]);
 
   const handleDownload = () => {
-    if (certData?.fileUrl) {
-      window.open(certData.fileUrl, '_blank', 'noopener,noreferrer');
-    }
+    const downloadUrl = certData?.downloadUrl || `/api/certificates/${id}/download`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   if (loading) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading certificate...</div>;

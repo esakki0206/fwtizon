@@ -26,14 +26,14 @@ const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleColl
           to="/admin"
           className="flex items-center min-w-0"
           onClick={closeSidebar}
-          aria-label="Fwtion Admin"
+          aria-label="Fwtizon Admin"
         >
           <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-primary-600 to-primary-400 shadow-lg shadow-primary-500/20 flex items-center justify-center text-white font-black text-sm shrink-0">
             F
           </div>
           {!collapsed && (
             <span className="ml-2.5 text-base font-black text-white tracking-tight truncate">
-              Fwtion <span className="font-light text-gray-500 text-xs">Admin</span>
+              Fwtizon <span className="font-light text-gray-500 text-xs">Admin</span>
             </span>
           )}
         </Link>

@@ -17,14 +17,14 @@ router.post('/generate', protect, generateCertificate);
 router.get('/my', protect, getMyCertificates);
 router.get('/user/:userId', protect, getCertificatesByUserId); // explicit requested standard
 
-// Public route for viewing/verifying a certificate details
-router.get('/:certificateId', getCertificateById);
-
 // PDF serving routes (View / Download)
 router.get('/view', serveCertificatePDF);
 router.get('/download', serveCertificatePDF);
 router.get('/:certificateId/view', serveCertificatePDF);
 router.get('/:certificateId/download', serveCertificatePDF);
+
+// Public route for viewing/verifying a certificate details
+router.get('/:certificateId', getCertificateById);
 
 // Export router. In server.js we will mount this as /api/certificates
 // We'll also mount the receipts via server.js or a separate router, 

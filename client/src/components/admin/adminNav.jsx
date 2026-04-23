@@ -20,7 +20,7 @@ import {
 export const ADMIN_NAV_LINKS = [
   { name: 'Dashboard', path: '/admin', icon: <FiHome size={16} /> },
   { name: 'Courses', path: '/admin/courses', icon: <FiBook size={16} /> },
-  { name: 'Live Cohorts', path: '/admin/live-courses', icon: <FiVideo size={16} /> },
+  { name: 'Live Courses', path: '/admin/live-courses', icon: <FiVideo size={16} /> },
   { name: 'Students', path: '/admin/students', icon: <FiUsers size={16} /> },
   { name: 'Quizzes', path: '/admin/quizzes', icon: <FiFileText size={16} /> },
   { name: 'Assignments', path: '/admin/assignments', icon: <FiFileText size={16} /> },

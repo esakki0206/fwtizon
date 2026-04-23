@@ -87,28 +87,12 @@ const POS = {
   },
 };
 
-function toPdfX(value) {
-  return value * SCALE_X;
-}
-
-function toPdfY(value) {
-  return value * SCALE_Y;
-}
-
-function toPdfW(value) {
-  return value * SCALE_X;
-}
-
-function toPdfH(value) {
-  return value * SCALE_Y;
-}
-
 function toPdfRect({ x, y, width, height }) {
   return {
-    x: toPdfX(x),
-    y: toPdfY(y),
-    width: toPdfW(width),
-    height: toPdfH(height),
+    x: x * SCALE_X,
+    y: y * SCALE_Y,
+    width: width * SCALE_X,
+    height: height * SCALE_Y,
   };
 }
 
@@ -120,7 +104,6 @@ function drawBackground(doc) {
 
 function whiteout(doc, rect) {
   const box = toPdfRect(rect);
-
   doc.save();
   doc.rect(box.x, box.y, box.width, box.height).fill(WHITE);
   doc.restore();
@@ -128,119 +111,66 @@ function whiteout(doc, rect) {
 
 function fitText(doc, text, width, maxSize, minSize) {
   let size = maxSize;
-
   while (size > minSize) {
     doc.fontSize(size);
-    if (doc.widthOfString(text) <= width) {
-      break;
-    }
+    if (doc.widthOfString(text) <= width) break;
     size -= 0.5;
   }
-
   return size;
 }
 
 function fitWrappedText(doc, text, width, height, maxSize, minSize, options = {}) {
   let size = maxSize;
-
   while (size > minSize) {
     doc.fontSize(size);
     const renderedHeight = doc.heightOfString(text, { width, ...options });
-    if (renderedHeight <= height) {
-      break;
-    }
+    if (renderedHeight <= height) break;
     size -= 0.5;
   }
-
   return size;
 }
 
 function drawSingleLine(doc, text, field, options) {
-  const {
-    font,
-    color,
-    maxSize,
-    minSize = maxSize,
-    align = 'left',
-    baselineAdjust = 0,
-  } = options;
-
+  const { font, color, maxSize, minSize = maxSize, align = 'left', baselineAdjust = 0 } = options;
   const box = toPdfRect(field);
-
   doc.save();
   doc.font(font);
-
   const fontSize = fitText(doc, text, box.width, maxSize, minSize);
   doc.fontSize(fontSize).fillColor(color);
-
   const textWidth = doc.widthOfString(text);
   const textHeight = doc.heightOfString(text, { lineBreak: false });
-
   let drawX = box.x;
-  if (align === 'center') {
-    drawX += Math.max(0, (box.width - textWidth) / 2);
-  } else if (align === 'right') {
-    drawX += Math.max(0, box.width - textWidth);
-  }
-
+  if (align === 'center') drawX += Math.max(0, (box.width - textWidth) / 2);
+  else if (align === 'right') drawX += Math.max(0, box.width - textWidth);
   const drawY = box.y + Math.max(0, (box.height - textHeight) / 2) + baselineAdjust;
   const drawWidth = align === 'center' ? Math.max(textWidth, 1) : box.width;
-
-  doc.text(text, drawX, drawY, {
-    width: drawWidth,
-    align,
-    lineBreak: false,
-  });
-
+  doc.text(text, drawX, drawY, { width: drawWidth, align, lineBreak: false });
   doc.restore();
 }
 
 function drawWrapped(doc, text, field, options) {
-  const {
-    font,
-    color,
-    maxSize,
-    minSize = maxSize,
-    align = 'left',
-    baselineAdjust = 0,
-    lineGap = 0,
-  } = options;
-
+  const { font, color, maxSize, minSize = maxSize, align = 'left', baselineAdjust = 0, lineGap = 0 } = options;
   const box = toPdfRect(field);
-
   doc.save();
   doc.font(font);
-
-  const fontSize = fitWrappedText(doc, text, box.width, box.height, maxSize, minSize, {
-    align,
-    lineGap,
-  });
-
+  const fontSize = fitWrappedText(doc, text, box.width, box.height, maxSize, minSize, { align, lineGap });
   doc.fontSize(fontSize).fillColor(color);
-
-  const renderedHeight = doc.heightOfString(text, {
-    width: box.width,
-    align,
-    lineGap,
-  });
-
+  const renderedHeight = doc.heightOfString(text, { width: box.width, align, lineGap });
   const drawY = box.y + Math.max(0, (box.height - renderedHeight) / 2) + baselineAdjust;
-
-  doc.text(text, box.x, drawY, {
-    width: box.width,
-    align,
-    lineGap,
-  });
-
+  doc.text(text, box.x, drawY, { width: box.width, align, lineGap });
   doc.restore();
 }
 
+/**
+ * Returns fiscal year string as "2024-25" (dash, not slash).
+ * IMPORTANT: The slash format "2024/25" breaks URL routing when used in receiptId.
+ */
 function getFiscalYear(date) {
   const parsed = new Date(date);
   const year = parsed.getFullYear();
   const month = parsed.getMonth() + 1;
   const startYear = month >= 4 ? year : year - 1;
-
+  // Use dash "-" NOT slash "/" — slash breaks Express URL param routing
   return `${startYear}-${String(startYear + 1).slice(-2)}`;
 }
 
@@ -250,11 +180,9 @@ function buildReceiptNo(receiptId, serialNumber, date) {
     const padded = String(serialNumber).padStart(2, '0');
     return `FWT-iZON-RECEIPT-${fiscalYear}-${padded}`;
   }
-
   if (receiptId && String(receiptId).startsWith('FWT-iZON-RECEIPT')) {
     return receiptId;
   }
-
   return receiptId ? String(receiptId) : `FWT-iZON-RECEIPT-${getFiscalYear(new Date())}-01`;
 }
 

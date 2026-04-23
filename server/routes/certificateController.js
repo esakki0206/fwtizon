@@ -4,50 +4,63 @@ import Enrollment from '../models/Enrollment.js';
 import Counter from '../models/Counter.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
-import { getSignedCloudinaryPdfUrl } from '../utils/cloudinaryAsset.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 const sanitizePdfFilename = (value, fallback) => {
   const safeValue = String(value || fallback || 'document')
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-
   return safeValue || fallback || 'document';
 };
 
 const buildCertificateLinks = (certificateId) => ({
-  viewUrl: `/api/certificates/view?certificateId=${encodeURIComponent(certificateId)}`,
-  downloadUrl: `/api/certificates/download?certificateId=${encodeURIComponent(certificateId)}`,
+  viewUrl: `/api/certificates/${certificateId}/view`,
+  downloadUrl: `/api/certificates/${certificateId}/download`,
 });
 
 const buildReceiptLinks = (receiptId) => ({
-  viewUrl: `/api/receipts/view?receiptId=${encodeURIComponent(receiptId)}`,
-  downloadUrl: `/api/receipts/download?receiptId=${encodeURIComponent(receiptId)}`,
+  viewUrl: `/api/receipts/${receiptId}/view`,
+  downloadUrl: `/api/receipts/${receiptId}/download`,
 });
 
 const mapCertificateDocument = (certificate) => {
   const data = certificate.toObject ? certificate.toObject() : certificate;
-  return {
-    ...data,
-    ...buildCertificateLinks(data.certificateId),
-  };
+  return { ...data, ...buildCertificateLinks(data.certificateId) };
 };
 
 const mapReceiptDocument = (receipt) => {
   const data = receipt.toObject ? receipt.toObject() : receipt;
-  return {
-    ...data,
-    ...buildReceiptLinks(data.receiptId),
-  };
+  return { ...data, ...buildReceiptLinks(data.receiptId) };
 };
 
+/**
+ * Fetch a PDF from Cloudinary and stream it to the client.
+ *
+ * WHY direct fetch (not private_download_url):
+ *   Files are uploaded with resource_type:'image', type:'upload' → they are
+ *   PUBLIC assets.  cloudinary.utils.private_download_url() is intended for
+ *   private/restricted assets and generates a signed URL that Cloudinary may
+ *   reject (or return a redirect) for public uploads, depending on plan.
+ *   The secure_url stored in fileUrl is already a permanent public URL; we
+ *   just proxy it through our server so the client sees it as a download/view
+ *   without needing to hit Cloudinary's CDN directly.
+ */
 const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
-  const signedUrl = getSignedCloudinaryPdfUrl(fileUrl);
-  const response = await fetch(signedUrl);
+  if (!fileUrl) {
+    throw new Error('No file URL stored for this document');
+  }
+
+  const response = await fetch(fileUrl);
 
   if (!response.ok) {
-    const details = await response.text().catch(() => '');
-    throw new Error(`Failed to fetch PDF from Cloudinary (${response.status})${details ? `: ${details.slice(0, 200)}` : ''}`);
+    throw new Error(
+      `Cloudinary returned ${response.status} for PDF asset. ` +
+      `Check that the file was uploaded successfully.`
+    );
   }
 
   const pdfBuffer = Buffer.from(await response.arrayBuffer());
@@ -55,13 +68,18 @@ const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Length', String(pdfBuffer.length));
-  res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
+  res.setHeader(
+    'Content-Disposition',
+    `${disposition}; filename="${safeFilename}"`
+  );
+  // Allow browser to cache the PDF for 1 hour (reduces Cloudinary bandwidth)
+  res.setHeader('Cache-Control', 'private, max-age=3600');
   res.status(200).send(pdfBuffer);
 };
 
-// ==============================
+// ─────────────────────────────────────────────────────────────────────────────
 // STUDENT CERTIFICATES
-// ==============================
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @desc    Generate a new certificate for a completed enrollment
@@ -175,6 +193,11 @@ export const getMyCertificates = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get certificates for any user (admin or self)
+ * @route   GET /api/certificates/user/:userId
+ * @access  Private
+ */
 export const getCertificatesByUserId = async (req, res) => {
   try {
     if (req.user.id !== req.params.userId && req.user.role !== 'admin') {
@@ -197,7 +220,7 @@ export const getCertificatesByUserId = async (req, res) => {
 };
 
 /**
- * @desc    Get a single certificate details (public for verification)
+ * @desc    Get a single certificate (public — for verification page)
  * @route   GET /api/certificates/:certificateId
  * @access  Public
  */
@@ -218,10 +241,15 @@ export const getCertificateById = async (req, res) => {
   }
 };
 
+/**
+ * @desc    View or download a certificate PDF
+ * @route   GET /api/certificates/:certificateId/view
+ * @route   GET /api/certificates/:certificateId/download
+ * @access  Public (certificates are shareable)
+ */
 export const serveCertificatePDF = async (req, res) => {
   try {
-    const certId = req.query.certificateId || req.params.certificateId;
-    const certificate = await Certificate.findOne({ certificateId: certId })
+    const certificate = await Certificate.findOne({ certificateId: req.params.certificateId })
       .select('certificateId fileUrl');
 
     if (!certificate) {
@@ -239,9 +267,9 @@ export const serveCertificatePDF = async (req, res) => {
   }
 };
 
-// ==============================
+// ─────────────────────────────────────────────────────────────────────────────
 // STUDENT RECEIPTS
-// ==============================
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @desc    Get all receipts for the logged-in student
@@ -265,16 +293,25 @@ export const getMyReceipts = async (req, res) => {
   }
 };
 
+/**
+ * @desc    View or download a receipt PDF
+ * @route   GET /api/receipts/:receiptId/view
+ * @route   GET /api/receipts/:receiptId/download
+ * @access  Private (owner or admin)
+ *
+ * NOTE: receiptId uses dashes only (e.g. FWT-iZON-RECEIPT-2024-25-01).
+ *       Never use slashes in IDs — they break Express URL param parsing.
+ */
 export const serveReceiptPDF = async (req, res) => {
   try {
-    const receiptId = req.query.receiptId || req.params.receiptId;
-    const receipt = await Receipt.findOne({ receiptId: receiptId })
+    const receipt = await Receipt.findOne({ receiptId: req.params.receiptId })
       .select('receiptId fileUrl user');
 
     if (!receipt) {
       return res.status(404).json({ success: false, message: 'Receipt not found' });
     }
 
+    // Must be the owner OR an admin
     if (!req.user || (receipt.user.toString() !== req.user.id && req.user.role !== 'admin')) {
       return res.status(403).json({ success: false, message: 'Not authorized to view this receipt' });
     }

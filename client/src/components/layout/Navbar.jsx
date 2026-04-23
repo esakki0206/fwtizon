@@ -116,7 +116,7 @@ const Navbar = () => {
             </div>
 
             <Link to="/live-courses" className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 font-medium transition-all">
-              Live Cohorts
+              Live Courses
             </Link>
 
             {user && (
@@ -180,7 +180,7 @@ const Navbar = () => {
                                 <FiBookOpen className="mr-3 text-gray-400" size={16} /> Manage Courses
                               </Link>
                               <Link to="/admin/live-courses" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                <svg className="w-4 h-4 mr-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg> Live Cohorts
+                                <svg className="w-4 h-4 mr-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg> Live Courses
                               </Link>
                               <Link to="/admin/payments" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                                 <svg className="w-4 h-4 mr-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" /><path d="M2 10h20M7 15h.01" /></svg> Payments
@@ -297,7 +297,7 @@ const Navbar = () => {
                 All Courses
               </Link>
               <Link to="/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                Live Cohorts
+                Live Courses
               </Link>
               {user && (
                 <Link to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -344,7 +344,7 @@ const Navbar = () => {
                         Manage Courses
                       </Link>
                       <Link to="/admin/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Live Cohorts
+                        Live Courses
                       </Link>
                       <Link to="/admin/payments" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
                         Payments

@@ -37,29 +37,54 @@ const mapReceiptDocument = (receipt) => {
   return { ...data, ...buildReceiptLinks(data.receiptId) };
 };
 
+import { v2 as cloudinary } from 'cloudinary';
+
+const getPublicIdFromUrl = (url) => {
+  const parts = url.split('/upload/');
+  if (parts.length !== 2) return null;
+  let path = parts[1];
+  if (path.match(/^v\d+\//)) {
+    path = path.replace(/^v\d+\//, '');
+  }
+  const dotIndex = path.lastIndexOf('.');
+  if (dotIndex !== -1) {
+    path = path.substring(0, dotIndex);
+  }
+  return path;
+};
+
 /**
  * Fetch a PDF from Cloudinary and stream it to the client.
  *
- * WHY direct fetch (not private_download_url):
- *   Files are uploaded with resource_type:'image', type:'upload' → they are
- *   PUBLIC assets.  cloudinary.utils.private_download_url() is intended for
- *   private/restricted assets and generates a signed URL that Cloudinary may
- *   reject (or return a redirect) for public uploads, depending on plan.
- *   The secure_url stored in fileUrl is already a permanent public URL; we
- *   just proxy it through our server so the client sees it as a download/view
- *   without needing to hit Cloudinary's CDN directly.
+ * NOTE: Cloudinary Free Tier blocks public delivery of PDFs by default 
+ * ("Strict delivery of PDF and ZIP files"). To bypass the 401 Unauthorized error,
+ * we extract the public_id and generate a signed private_download_url.
  */
 const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
   if (!fileUrl) {
     throw new Error('No file URL stored for this document');
   }
 
-  const response = await fetch(fileUrl);
+  let fetchUrl = fileUrl;
+  try {
+    const publicId = getPublicIdFromUrl(fileUrl);
+    if (publicId) {
+      fetchUrl = cloudinary.utils.private_download_url(
+        publicId,
+        'pdf',
+        { resource_type: 'image', type: 'upload' }
+      );
+    }
+  } catch (err) {
+    console.error('Failed to generate signed download URL, falling back:', err);
+  }
+
+  const response = await fetch(fetchUrl);
 
   if (!response.ok) {
     throw new Error(
       `Cloudinary returned ${response.status} for PDF asset. ` +
-      `Check that the file was uploaded successfully.`
+      `Check that the file was uploaded successfully and is not blocked by strict delivery policies.`
     );
   }
 

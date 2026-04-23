@@ -22,6 +22,7 @@ export const uploadPdfToCloudinary = (buffer, filename, folder) => {
         public_id: filename,
         resource_type: 'image', // MUST be image for Cloudinary to serve PDF as viewable/interactive
         format: 'pdf',
+        upload_preset: 'fwtiZON',
       },
       (error, result) => {
         if (error) {

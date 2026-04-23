@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { FiChevronLeft } from 'react-icons/fi';
 import { cn } from '../../lib/utils';
 import { ADMIN_NAV_LINKS } from './adminNav';
+import fwtLogoBlack from '../../assets/FwT - Logo - Black Tagline.png';
+import fwtLogoWhite from '../../assets/FwT - Logo - White Tagline.png';
 
 const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleCollapse }) => {
   const { pathname } = useLocation();
@@ -16,25 +18,28 @@ const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleColl
   return (
     <aside
       className={cn(
-        'bg-gray-950 border-r border-gray-800 text-gray-300 flex flex-col h-full overflow-y-auto',
+        'bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 flex flex-col h-full overflow-y-auto transition-colors',
         className
       )}
     >
       {/* Brand */}
-      <div className="px-4 py-4 sticky top-0 bg-gray-950/95 backdrop-blur-md z-10 border-b border-gray-800/80 flex items-center justify-between">
+      <div className="px-4 py-4 sticky top-0 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md z-10 border-b border-gray-200/80 dark:border-gray-800/80 flex items-center justify-between">
         <Link
           to="/admin"
           className="flex items-center min-w-0"
           onClick={closeSidebar}
           aria-label="Fwtizon Admin"
         >
-          <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-primary-600 to-primary-400 shadow-lg shadow-primary-500/20 flex items-center justify-center text-white font-black text-sm shrink-0">
-            F
-          </div>
-          {!collapsed && (
-            <span className="ml-2.5 text-base font-black text-white tracking-tight truncate">
-              Fwtizon <span className="font-light text-gray-500 text-xs">Admin</span>
-            </span>
+          {collapsed ? (
+            <>
+              <img src={fwtLogoBlack} alt="FWT" className="w-8 h-8 object-contain block dark:hidden" />
+              <img src={fwtLogoWhite} alt="FWT" className="w-8 h-8 object-contain hidden dark:block" />
+            </>
+          ) : (
+            <>
+              <img src={fwtLogoBlack} alt="FWT Admin" className="h-8 w-auto object-contain block dark:hidden" />
+              <img src={fwtLogoWhite} alt="FWT Admin" className="h-8 w-auto object-contain hidden dark:block" />
+            </>
           )}
         </Link>
         {onToggleCollapse && (
@@ -72,8 +77,8 @@ const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleColl
                 'group relative flex items-center rounded-lg transition-all text-sm',
                 collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
                 isActive
-                  ? 'text-white font-semibold bg-gray-800/70'
-                  : 'hover:bg-gray-800/40 hover:text-white font-medium text-gray-400'
+                  ? 'text-primary-700 dark:text-white font-semibold bg-primary-50 dark:bg-gray-800/70'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800/40 hover:text-gray-900 dark:hover:text-white font-medium text-gray-500 dark:text-gray-400'
               )}
             >
               {isActive && (
@@ -99,10 +104,10 @@ const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleColl
 
       {/* Footer status */}
       {!collapsed && (
-        <div className="p-3 mt-auto border-t border-gray-800/50">
-          <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
+        <div className="p-3 mt-auto border-t border-gray-200/80 dark:border-gray-800/50">
+          <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
             <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">System</p>
-            <div className="flex items-center text-xs font-medium text-green-400">
+            <div className="flex items-center text-xs font-medium text-green-600 dark:text-green-400">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-2 animate-pulse" />
               All systems operational
             </div>

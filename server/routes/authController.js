@@ -86,11 +86,14 @@ export const register = async (req, res, next) => {
       throw new Error('User already exists with this email');
     }
 
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&color=fff&size=200`;
+
     const user = await User.create({
       name,
       email,
       password,
       role: role || 'student',
+      avatar: avatarUrl,
     });
 
     await sendTokenResponse(user, 201, res);
@@ -195,11 +198,12 @@ export const googleLogin = async (req, res, next) => {
       }
     } else {
       // Create new user from Google profile
+      const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name || email.split('@')[0])}&background=random&color=fff&size=200`;
       user = await User.create({
         name: name || email.split('@')[0],
         email,
         googleId,
-        avatar: picture || 'default_avatar.jpg',
+        avatar: picture || defaultAvatar,
         role: 'student',
       });
     }

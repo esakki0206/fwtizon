@@ -25,8 +25,8 @@ const Profile = () => {
            
            <div className="p-8 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-8">
              <div className="relative group">
-               <img 
-                 src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.name || 'User'}&size=128`} 
+                 <img 
+                   src={!user?.avatar || user?.avatar === 'default_avatar.jpg' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=4f46e5&color=fff&size=128` : user.avatar} 
                  alt="Profile" 
                  className="w-32 h-32 rounded-full border-4 border-gray-50 dark:border-gray-700 object-cover"
                />

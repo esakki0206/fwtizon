@@ -145,7 +145,7 @@ const Navbar = () => {
                     className="flex items-center space-x-2 px-2 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-all"
                   >
                     <img
-                      src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}&background=4f46e5&color=fff&size=64`}
+                      src={!user.avatar || user.avatar === 'default_avatar.jpg' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4f46e5&color=fff&size=64` : user.avatar}
                       alt={user.name}
                       className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-700 shadow-sm object-cover"
                     />
@@ -326,7 +326,7 @@ const Navbar = () => {
                 <>
                   <div className="px-4 py-3 flex items-center space-x-3">
                     <img
-                      src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}&background=4f46e5&color=fff&size=64`}
+                      src={!user.avatar || user.avatar === 'default_avatar.jpg' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4f46e5&color=fff&size=64` : user.avatar}
                       alt={user.name}
                       className="w-10 h-10 rounded-full border-2 border-gray-200 dark:border-gray-700 object-cover"
                     />

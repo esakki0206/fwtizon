@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiDownload } from 'react-icons/fi';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const CertificateView = () => {
   const { id } = useParams();
@@ -24,18 +25,37 @@ const CertificateView = () => {
     fetchCert();
   }, [id]);
 
-  const handleDownload = () => {
-    const rawUrl = certData?.downloadUrl || `/api/certificates/download?certificateId=${encodeURIComponent(id)}`;
-    
-    // Prepend backend URL if relative path
-    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const downloadUrl = rawUrl.startsWith('/api') ? `${backendUrl}${rawUrl}` : rawUrl;
+  const handleDownload = async () => {
+    const rawUrl = certData?.downloadUrl || `/api/certificates/${id}/download`;
+    const toastId = toast.loading('Preparing download…');
+    try {
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const downloadUrl = rawUrl.startsWith('/api') ? `${backendUrl}${rawUrl}` : rawUrl;
 
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+      const response = await axios.get(downloadUrl, {
+        responseType: 'blob',
+        withCredentials: true,
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      toast.success('Download started!', { id: toastId });
+    } catch (err) {
+      console.error('Certificate download error:', err);
+      toast.error(
+        err.response?.status === 404
+          ? 'Certificate PDF not found.'
+          : 'Download failed. Please try again.',
+        { id: toastId }
+      );
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading certificate...</div>;

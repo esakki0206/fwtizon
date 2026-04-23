@@ -1384,7 +1384,16 @@ router.get('/certificates', protect, authorize('admin'), async (req, res) => {
       .populate('course', 'title')
       .populate('liveCourse', 'title')
       .sort('-createdAt');
-    res.status(200).json({ success: true, count: certificates.length, data: certificates });
+
+    // Append viewUrl / downloadUrl so the frontend can build correct PDF links
+    const data = certificates.map((cert) => {
+      const obj = cert.toObject();
+      obj.viewUrl = `/api/certificates/${obj.certificateId}/view`;
+      obj.downloadUrl = `/api/certificates/${obj.certificateId}/download`;
+      return obj;
+    });
+
+    res.status(200).json({ success: true, count: data.length, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1547,7 +1556,16 @@ router.get('/receipts', protect, authorize('admin'), async (req, res) => {
       .populate('course', 'title')
       .populate('liveCourse', 'title')
       .sort('-createdAt');
-    res.status(200).json({ success: true, count: receipts.length, data: receipts });
+
+    // Append viewUrl / downloadUrl so the frontend can build correct PDF links
+    const data = receipts.map((receipt) => {
+      const obj = receipt.toObject();
+      obj.viewUrl = `/api/receipts/${obj.receiptId}/view`;
+      obj.downloadUrl = `/api/receipts/${obj.receiptId}/download`;
+      return obj;
+    });
+
+    res.status(200).json({ success: true, count: data.length, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

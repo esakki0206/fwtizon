@@ -15,26 +15,20 @@ const router = express.Router();
 // Student routes (protected)
 router.post('/generate', protect, generateCertificate);
 router.get('/my', protect, getMyCertificates);
-router.get('/user/:userId', protect, getCertificatesByUserId); // explicit requested standard
+router.get('/user/:userId', protect, getCertificatesByUserId);
 
-// PDF serving routes (View / Download)
-router.get('/view', serveCertificatePDF);
-router.get('/download', serveCertificatePDF);
+// PDF serving routes (View / Download) — using path params
 router.get('/:certificateId/view', serveCertificatePDF);
 router.get('/:certificateId/download', serveCertificatePDF);
 
 // Public route for viewing/verifying a certificate details
 router.get('/:certificateId', getCertificateById);
 
-// Export router. In server.js we will mount this as /api/certificates
-// We'll also mount the receipts via server.js or a separate router, 
-// but for simplicity we can export a receipts router here too.
 export default router;
 
-// Explicit Receipts router to avoid mapping /api/certificates to receipts
+// Explicit Receipts router (mounted at /api/receipts in server.js)
 export const receiptsRouter = express.Router();
 receiptsRouter.get('/my', protect, getMyReceipts);
-receiptsRouter.get('/view', protect, serveReceiptPDF);
-receiptsRouter.get('/download', protect, serveReceiptPDF);
 receiptsRouter.get('/:receiptId/view', protect, serveReceiptPDF);
 receiptsRouter.get('/:receiptId/download', protect, serveReceiptPDF);
+

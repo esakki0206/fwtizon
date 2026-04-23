@@ -1,13 +1,61 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AdminTable } from '../../components/admin/AdminTable';
-import { FiTrash2, FiPlus, FiDownload, FiCheckCircle, FiXCircle, FiRefreshCw, FiAward, FiFileText, FiUser, FiLayers, FiExternalLink } from 'react-icons/fi';
+import { FiTrash2, FiPlus, FiDownload, FiCheckCircle, FiXCircle, FiRefreshCw, FiAward, FiFileText, FiUser, FiLayers, FiExternalLink, FiEye } from 'react-icons/fi';
 import { Button } from '../../components/ui/button';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const getFullUrl = (url) => url.startsWith('/api') ? `${BACKEND_URL}${url}` : url;
+
+/**
+ * Authenticated PDF download — streams the PDF via axios (sends Bearer token)
+ * and triggers a browser download from a blob URL.
+ */
+const downloadPdfAuth = async (relativeUrl, filename) => {
+  const toastId = toast.loading('Preparing download…');
+  try {
+    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL}${relativeUrl}`;
+    const response = await axios.get(url, { responseType: 'blob', withCredentials: true });
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'document.pdf';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    toast.success('Download started!', { id: toastId });
+  } catch (err) {
+    console.error('PDF download error:', err);
+    toast.error(
+      err.response?.status === 404
+        ? 'PDF not found. The file may not have been generated yet.'
+        : 'Download failed. Please try again.',
+      { id: toastId }
+    );
+  }
+};
+
+/**
+ * Authenticated PDF view — opens the PDF inline in a new tab via blob URL.
+ */
+const viewPdfAuth = async (relativeUrl) => {
+  const toastId = toast.loading('Opening document…');
+  try {
+    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL}${relativeUrl}`;
+    const response = await axios.get(url, { responseType: 'blob', withCredentials: true });
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+    toast.success('Opened in new tab!', { id: toastId });
+  } catch (err) {
+    console.error('PDF view error:', err);
+    toast.error('Could not open document. Try downloading instead.', { id: toastId });
+  }
+};
 
 const CertificateManager = () => {
   const [activeTab, setActiveTab] = useState('certificates');
@@ -158,30 +206,30 @@ const CertificateManager = () => {
     )},
     { header: 'Program', accessorKey: 'courseName', cell: (row) => <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">{row.courseName}</span> },
     { header: 'Issue Date', accessorKey: 'issueDate', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.issueDate).toLocaleDateString()}</span> },
-    { header: 'Action', accessorKey: 'actions', cell: (row) => (
-      <div className="flex space-x-2">
-        <a
-          href={getFullUrl(row.viewUrl ? `${row.viewUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/view?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`)}
-          target="_blank"
-          rel="noreferrer"
-          title="View PDF"
-          className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
-        >
-          <FiExternalLink size={14} />
-        </a>
-        <a
-          href={getFullUrl(row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/download?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`)}
-          target="_blank"
-          rel="noreferrer"
-          title="Download PDF"
-          className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
-        >
-          <FiDownload size={14} />
-        </a>
-        <Button variant="outline" size="sm" title="Regenerate PDF" onClick={() => handleRegenerate(row._id)}><FiRefreshCw size={14} /></Button>
-        <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(row._id, 'cert')}><FiTrash2 size={14} /></Button>
-      </div>
-    )}
+    { header: 'Action', accessorKey: 'actions', cell: (row) => {
+      const viewUrl = row.viewUrl || `/api/certificates/${row.certificateId}/view`;
+      const downloadUrl = row.downloadUrl || `/api/certificates/${row.certificateId}/download`;
+      return (
+        <div className="flex space-x-2">
+          <button
+            onClick={() => viewPdfAuth(viewUrl)}
+            title="View PDF"
+            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
+          >
+            <FiEye size={14} />
+          </button>
+          <button
+            onClick={() => downloadPdfAuth(downloadUrl, `${row.certificateId}.pdf`)}
+            title="Download PDF"
+            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
+          >
+            <FiDownload size={14} />
+          </button>
+          <Button variant="outline" size="sm" title="Regenerate PDF" onClick={() => handleRegenerate(row._id)}><FiRefreshCw size={14} /></Button>
+          <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(row._id, 'cert')}><FiTrash2 size={14} /></Button>
+        </div>
+      );
+    }},
   ];
 
   const receiptColumns = [
@@ -199,11 +247,28 @@ const CertificateManager = () => {
       </span>
     )},
     { header: 'Date', accessorKey: 'createdAt', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.createdAt).toLocaleDateString()}</span> },
-    { header: 'Download', accessorKey: 'actions', cell: (row) => (
-      <div className="flex space-x-2">
-        <a href={getFullUrl(row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/receipts/download?receiptId=${encodeURIComponent(row.receiptId)}&token=${localStorage.getItem('token') || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /> Download</a>
-      </div>
-    )}
+    { header: 'Download', accessorKey: 'actions', cell: (row) => {
+      const downloadUrl = row.downloadUrl || `/api/receipts/${row.receiptId}/download`;
+      const viewUrl = row.viewUrl || `/api/receipts/${row.receiptId}/view`;
+      return (
+        <div className="flex space-x-2">
+          <button
+            onClick={() => downloadPdfAuth(downloadUrl, `${row.receiptId}.pdf`)}
+            title="Download PDF"
+            className="inline-flex items-center justify-center gap-1.5 p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
+          >
+            <FiDownload size={14} /> Download
+          </button>
+          <button
+            onClick={() => viewPdfAuth(viewUrl)}
+            title="View PDF"
+            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
+          >
+            <FiEye size={14} />
+          </button>
+        </div>
+      );
+    }},
   ];
 
   return (

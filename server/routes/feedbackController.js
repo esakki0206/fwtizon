@@ -10,6 +10,34 @@ import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
+/**
+ * SINGLE SOURCE OF TRUTH: Helper to determine if a feedback form is unlocked.
+ * Uses UTC server time for consistency.
+ */
+export const isFormUnlocked = (form, liveCourse) => {
+  if (!form || !form.isActive) return false;
+
+  const now = new Date(); // Server UTC time
+
+  // Check submission deadline
+  if (form.submissionDeadline && new Date(form.submissionDeadline) < now) {
+    return false;
+  }
+
+  // Check manual unlock date
+  if (form.unlockDate && new Date(form.unlockDate) <= now) {
+    return true;
+  }
+
+  // Auto-unlock if course endDate has passed
+  if (liveCourse && liveCourse.endDate && new Date(liveCourse.endDate) <= now) {
+    return true;
+  }
+
+  // Check manual course completion status
+  return liveCourse && liveCourse.status === 'Completed';
+};
+
 // ==============================
 // ADMIN: Feedback Form CRUD
 // ==============================
@@ -124,11 +152,8 @@ export const getAllFeedbackForms = async (req, res) => {
         status: { $in: ['active', 'completed'] },
       });
 
-      // Determine unlock status
-      const now = new Date();
-      const courseCompleted = form.liveCourse?.status === 'Completed';
-      const manualUnlock = form.unlockDate && new Date(form.unlockDate) <= now;
-      const isUnlocked = courseCompleted || manualUnlock;
+      // Determine unlock status using the single source of truth function
+      const isUnlocked = isFormUnlocked(form, form.liveCourse);
 
       return {
         ...form,
@@ -281,27 +306,7 @@ export const resetSubmission = async (req, res) => {
 // STUDENT: Feedback endpoints
 // ==============================
 
-/**
- * Helper to determine if a feedback form is unlocked for a student.
- */
-const isFormUnlocked = (form, liveCourse) => {
-  if (!form.isActive) return false;
-
-  const now = new Date();
-
-  // Check submission deadline
-  if (form.submissionDeadline && new Date(form.submissionDeadline) < now) {
-    return false;
-  }
-
-  // Check manual unlock date
-  if (form.unlockDate && new Date(form.unlockDate) <= now) {
-    return true;
-  }
-
-  // Check course completion status
-  return liveCourse.status === 'Completed';
-};
+// Removed from here as it's moved to the top
 
 /**
  * @desc    Get all eligible feedback forms for the logged-in student
@@ -688,8 +693,8 @@ export const getFeedbackStatus = async (req, res) => {
       });
     }
 
-    const liveCourse = await LiveCourse.findById(liveCourseId).select('title status');
-    const form = await FeedbackForm.findOne({ liveCourse: liveCourseId, isActive: true }).select('_id title unlockDate submissionDeadline');
+    const liveCourse = await LiveCourse.findById(liveCourseId).select('title status endDate');
+    const form = await FeedbackForm.findOne({ liveCourse: liveCourseId, isActive: true }).select('_id title unlockDate submissionDeadline isActive');
 
     if (!form) {
       return res.status(200).json({

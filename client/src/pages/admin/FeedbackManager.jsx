@@ -51,6 +51,17 @@ const FeedbackManager = () => {
 
   useEffect(() => { fetchForms(); }, [fetchForms]);
 
+  const formatLocalDatetime = (dateString) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const toUTCString = (localString) => {
+    return localString ? new Date(localString).toISOString() : null;
+  };
+
   const openCreateModal = async () => {
     await fetchLiveCourses();
     setEditingForm(null);
@@ -65,8 +76,8 @@ const FeedbackManager = () => {
       liveCourseId: form.liveCourse?._id || '',
       title: form.title,
       instructions: form.instructions || '',
-      unlockDate: form.unlockDate ? new Date(form.unlockDate).toISOString().slice(0, 16) : '',
-      submissionDeadline: form.submissionDeadline ? new Date(form.submissionDeadline).toISOString().slice(0, 16) : '',
+      unlockDate: formatLocalDatetime(form.unlockDate),
+      submissionDeadline: formatLocalDatetime(form.submissionDeadline),
       questions: form.questions.map(q => ({ text: q.text, type: q.type, required: q.required, options: q.options || [] })),
     });
     setModalOpen(true);
@@ -81,13 +92,13 @@ const FeedbackManager = () => {
       if (editingForm) {
         await axios.put(`/api/admin/feedback-forms/${editingForm._id}`, {
           title: formData.title, instructions: formData.instructions, questions: formData.questions,
-          unlockDate: formData.unlockDate || null, submissionDeadline: formData.submissionDeadline || null,
+          unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
         });
         toast.success('Form updated');
       } else {
         await axios.post('/api/admin/feedback-forms', {
           liveCourseId: formData.liveCourseId, title: formData.title, instructions: formData.instructions,
-          questions: formData.questions, unlockDate: formData.unlockDate || null, submissionDeadline: formData.submissionDeadline || null,
+          questions: formData.questions, unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
         });
         toast.success('Form created');
       }

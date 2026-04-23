@@ -23,39 +23,39 @@ const COLOR_NAVY = '#1B2A4A';
 const POS = {
   name: {
     x: 620,
-    y: 1095,          // ⬅️ FIXED (was 1150 → too high)
+    y: 1079,          // ⬅️ FIXED (was 1150 → too high)
     width: 1240,
     height: 180,      // ⬅️ tighter box (prevents vertical drift)
-    wipe: { x: 660, y: 1108, width: 1160, height: 200 },
+    wipe: { x: 660, y: 1080, width: 1160, height: 200 },
     baselineAdjust: 1.5,
   },
 
   course: {
     x: 700,
-    y: 1355,          // ⬅️ FIXED (moved down for proper spacing)
+    y: 1465,          // ⬅️ FIXED (moved down for proper spacing)
     width: 1080,
     height: 160,
-    wipe: { x: 820, y: 1305, width: 860, height: 180 },
+    wipe: { x: 820, y: 1465, width: 860, height: 180 },
     baselineAdjust: 2,
   },
 
 
 
   date: {
-    x: 2195,
+    x: 2050,
     y: 3280,
-    width: 250,
+    width: 800,
     height: 90,
-    wipe: { x: 2195, y: 3280, width: 250, height: 90 },
+    wipe: { x: 2000, y: 3280, width: 450, height: 90 },
     baselineAdjust: 0.4,
   },
 
   slNo: {
-    x: 2195,
+    x: 2050,
     y: 3370,
-    width: 250,
+    width: 800,
     height: 50,
-    wipe: { x: 2195, y: 3370, width: 250, height: 50 },
+    wipe: { x: 2000, y: 3370, width: 450, height: 50 },
     baselineAdjust: 0.2,
   },
 };

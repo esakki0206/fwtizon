@@ -1,4 +1,4 @@
-﻿import PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { amountToWords } from './numberToWords.js';
@@ -241,7 +241,7 @@ function getFiscalYear(date) {
   const month = parsed.getMonth() + 1;
   const startYear = month >= 4 ? year : year - 1;
 
-  return `${startYear}/${String(startYear + 1).slice(-2)}`;
+  return `${startYear}-${String(startYear + 1).slice(-2)}`;
 }
 
 function buildReceiptNo(receiptId, serialNumber, date) {

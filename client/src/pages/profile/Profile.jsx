@@ -74,38 +74,7 @@ const Profile = () => {
                  </div>
                </div>
 
-               <div className="pt-4 flex items-center justify-between">
-                 {!isEditing ? (
-                   <button 
-                     type="button" 
-                     onClick={() => setIsEditing(true)}
-                     className="px-6 py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-medium rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
-                   >
-                     Edit Profile
-                   </button>
-                 ) : (
-                   <div className="flex space-x-3">
-                     <button 
-                       type="submit" 
-                       className="px-6 py-2.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
-                     >
-                       Save Changes
-                     </button>
-                     <button 
-                       type="button"
-                       onClick={() => { setIsEditing(false); setName(user?.name); setEmail(user?.email); }} 
-                       className="px-6 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                     >
-                       Cancel
-                     </button>
-                   </div>
-                 )}
-
-                 <button type="button" className="text-primary-600 dark:text-primary-400 font-medium hover:underline flex items-center text-sm">
-                   <FiLock className="mr-1.5" /> Change Password
-                 </button>
-               </div>
-             </form>
+              </form>
            </div>
         </div>
       </div>

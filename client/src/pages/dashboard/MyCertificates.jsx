@@ -51,9 +51,14 @@ const MyCertificates = () => {
 
   const handleDownload = (url) => {
     if (!url) return;
+    
+    // Append token for protected routes
+    const token = localStorage.getItem('token');
+    const authUrl = token ? `${url}${url.includes('?') ? '&' : '?'}token=${token}` : url;
 
     const link = document.createElement('a');
-    link.href = url;
+    link.href = authUrl;
+    link.target = '_blank';
     link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
     link.click();

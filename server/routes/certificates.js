@@ -21,6 +21,8 @@ router.get('/user/:userId', protect, getCertificatesByUserId); // explicit reque
 router.get('/:certificateId', getCertificateById);
 
 // PDF serving routes (View / Download)
+router.get('/view', serveCertificatePDF);
+router.get('/download', serveCertificatePDF);
 router.get('/:certificateId/view', serveCertificatePDF);
 router.get('/:certificateId/download', serveCertificatePDF);
 
@@ -32,5 +34,7 @@ export default router;
 // Explicit Receipts router to avoid mapping /api/certificates to receipts
 export const receiptsRouter = express.Router();
 receiptsRouter.get('/my', protect, getMyReceipts);
+receiptsRouter.get('/view', protect, serveReceiptPDF);
+receiptsRouter.get('/download', protect, serveReceiptPDF);
 receiptsRouter.get('/:receiptId/view', protect, serveReceiptPDF);
 receiptsRouter.get('/:receiptId/download', protect, serveReceiptPDF);

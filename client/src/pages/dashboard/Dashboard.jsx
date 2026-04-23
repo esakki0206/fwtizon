@@ -152,7 +152,7 @@ const Dashboard = () => {
               <Link to="/dashboard/certificates" className="flex-1 text-center px-5 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer block">
                 <div className="flex justify-center mb-0.5"><FiAward className="text-yellow-500" size={16} /></div>
                 <div className="text-xl font-black text-gray-900 dark:text-white">{certificatesCount}</div>
-                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Certificates</div>
+                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Certifications and Receipts</div>
               </Link>
             </div>
           </div>

@@ -186,7 +186,7 @@ const Navbar = () => {
                                 <svg className="w-4 h-4 mr-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" /><path d="M2 10h20M7 15h.01" /></svg> Payments
                               </Link>
                               <Link to="/admin/certificates" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                <FiAward className="mr-3 text-gray-400" size={16} /> Certificates
+                                <FiAward className="mr-3 text-gray-400" size={16} /> Certifications and Receipt
                               </Link>
                               <Link to="/admin/users" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                                 <FiUser className="mr-3 text-gray-400" size={16} /> Users
@@ -207,7 +207,7 @@ const Navbar = () => {
                                 <FiFileText className="mr-3 text-gray-400" size={16} /> Assignments
                               </Link>
                               <Link to="/dashboard/certificates" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                <FiAward className="mr-3 text-gray-400" size={16} /> Certificates
+                                <FiAward className="mr-3 text-gray-400" size={16} /> Certifications and Receipts
                               </Link>
                               <Link to="/profile" onClick={() => setProfileOpen(false)} className="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                                 <FiUser className="mr-3 text-gray-400" size={16} /> Profile
@@ -350,7 +350,7 @@ const Navbar = () => {
                         Payments
                       </Link>
                       <Link to="/admin/certificates" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Certificates
+                        Certifications and Receipt
                       </Link>
                       <Link to="/admin/users" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
                         Users
@@ -371,7 +371,7 @@ const Navbar = () => {
                         Assignments
                       </Link>
                       <Link to="/dashboard/certificates" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Certificates
+                        Certifications and Receipts
                       </Link>
                       <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
                         Profile

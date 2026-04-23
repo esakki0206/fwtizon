@@ -630,44 +630,11 @@ router.get('/admin-notifications', protect, authorize('admin'), async (req, res)
       .limit(50)
       .lean();
 
-    // Also generate system-level alerts dynamically
-    const systemAlerts = [];
-
-    // Check for registration spikes (more than 10 new users today)
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const newTodayCount = await User.countDocuments({ createdAt: { $gte: todayStart } });
-    if (newTodayCount > 10) {
-      systemAlerts.push({
-        _id: 'alert-reg-spike',
-        type: 'warning',
-        message: `Registration spike detected: ${newTodayCount} new users today`,
-        isRead: false,
-        createdAt: new Date(),
-      });
-    }
-
-    // Check system memory
-    const memUsage = process.memoryUsage();
-    const usedPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-    if (usedPercent > 85) {
-      systemAlerts.push({
-        _id: 'alert-memory',
-        type: 'danger',
-        message: `High memory usage: ${usedPercent}% heap utilized`,
-        isRead: false,
-        createdAt: new Date(),
-      });
-    }
-
-    // Combine notifications with system alerts
-    const allNotifications = [...systemAlerts, ...notifications].slice(0, 50);
-
     res.status(200).json({
       success: true,
-      count: allNotifications.length,
-      unreadCount: allNotifications.filter(n => !n.isRead).length,
-      data: allNotifications,
+      count: notifications.length,
+      unreadCount: notifications.filter(n => !n.isRead).length,
+      data: notifications,
     });
   } catch (error) {
     console.error('Admin notifications error:', error);

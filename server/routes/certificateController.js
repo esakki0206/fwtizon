@@ -16,13 +16,13 @@ const sanitizePdfFilename = (value, fallback) => {
 };
 
 const buildCertificateLinks = (certificateId) => ({
-  viewUrl: `/api/certificates/${certificateId}/view`,
-  downloadUrl: `/api/certificates/${certificateId}/download`,
+  viewUrl: `/api/certificates/view?certificateId=${encodeURIComponent(certificateId)}`,
+  downloadUrl: `/api/certificates/download?certificateId=${encodeURIComponent(certificateId)}`,
 });
 
 const buildReceiptLinks = (receiptId) => ({
-  viewUrl: `/api/receipts/${receiptId}/view`,
-  downloadUrl: `/api/receipts/${receiptId}/download`,
+  viewUrl: `/api/receipts/view?receiptId=${encodeURIComponent(receiptId)}`,
+  downloadUrl: `/api/receipts/download?receiptId=${encodeURIComponent(receiptId)}`,
 });
 
 const mapCertificateDocument = (certificate) => {
@@ -220,7 +220,8 @@ export const getCertificateById = async (req, res) => {
 
 export const serveCertificatePDF = async (req, res) => {
   try {
-    const certificate = await Certificate.findOne({ certificateId: req.params.certificateId })
+    const certId = req.query.certificateId || req.params.certificateId;
+    const certificate = await Certificate.findOne({ certificateId: certId })
       .select('certificateId fileUrl');
 
     if (!certificate) {
@@ -266,7 +267,8 @@ export const getMyReceipts = async (req, res) => {
 
 export const serveReceiptPDF = async (req, res) => {
   try {
-    const receipt = await Receipt.findOne({ receiptId: req.params.receiptId })
+    const receiptId = req.query.receiptId || req.params.receiptId;
+    const receipt = await Receipt.findOne({ receiptId: receiptId })
       .select('receiptId fileUrl user');
 
     if (!receipt) {

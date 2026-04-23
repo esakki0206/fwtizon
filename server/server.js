@@ -5,7 +5,6 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import connectDB from './config/db.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
-import User from './models/User.js';
 
 // Connect to database
 connectDB();
@@ -15,12 +14,29 @@ const app = express();
 // ── Security Middleware ──
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: false, // Managed by frontend in production
+  contentSecurityPolicy: false,
 }));
 
 // ── CORS Configuration ──
+// Build an allowlist from env vars so both local dev and production work.
+// CLIENT_URL            = http://localhost:5173      (dev)
+// CLIENT_URL_PRODUCTION = https://fwtizon.vercel.app (prod)
+const ALLOWED_ORIGINS = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL_PRODUCTION,
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean); // remove undefined/empty entries
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173' || 'https://fwtizon.vercel.app',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (server-to-server, Postman, curl)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin '${origin}' not allowed`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -77,7 +93,6 @@ app.use((req, res) => {
 app.use((err, req, res, _next) => {
   console.error('Server Error:', err.message);
 
-  // Multer file size error
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ success: false, message: 'File size exceeds the 10MB limit' });
   }
@@ -94,4 +109,5 @@ app.use((err, req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✓ Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+  console.log(`✓ CORS allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

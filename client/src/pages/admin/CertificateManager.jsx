@@ -15,7 +15,7 @@ const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const downloadPdfAuth = async (relativeUrl, filename) => {
   const toastId = toast.loading('Preparing download…');
   try {
-    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL}${relativeUrl}`;
+    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL.replace(/\/+$/, '')}${relativeUrl}`;
     const response = await axios.get(url, { responseType: 'blob', withCredentials: true });
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const blobUrl = URL.createObjectURL(blob);
@@ -44,7 +44,7 @@ const downloadPdfAuth = async (relativeUrl, filename) => {
 const viewPdfAuth = async (relativeUrl) => {
   const toastId = toast.loading('Opening document…');
   try {
-    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL}${relativeUrl}`;
+    const url = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_URL.replace(/\/+$/, '')}${relativeUrl}`;
     const response = await axios.get(url, { responseType: 'blob', withCredentials: true });
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const blobUrl = URL.createObjectURL(blob);

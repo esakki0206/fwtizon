@@ -15,6 +15,7 @@ const AdminSidebar = ({ className, closeSidebar, collapsed = false, onToggleColl
     return pathname === link.path || pathname.startsWith(`${link.path}/`);
   };
 
+
   return (
     <aside
       className={cn(

@@ -13,7 +13,7 @@ const downloadPdf = async (receiptId, type = 'download') => {
   const toastId = toast.loading('Preparing PDF…');
   try {
     const backendBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const url = `${backendBase}/api/receipts/${receiptId}/${type}`;
+    const url = `${backendBase.replace(/\/+$/, '')}/api/receipts/${receiptId}/${type}`;
     const response = await axios.get(url, {
       responseType: 'blob',
       withCredentials: true,

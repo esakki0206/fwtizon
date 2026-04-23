@@ -31,7 +31,7 @@ const downloadPdf = async (relativeUrl, filename) => {
     const backendBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     // If already an absolute URL (e.g. Cloudinary), open directly
     const isAbsolute = relativeUrl.startsWith('http');
-    const url = isAbsolute ? relativeUrl : `${backendBase}${relativeUrl}`;
+    const url = isAbsolute ? relativeUrl : `${backendBase.replace(/\/+$/, '')}${relativeUrl}`;
 
     const response = await axios.get(url, {
       responseType: 'blob',
@@ -71,7 +71,7 @@ const viewPdf = async (relativeUrl) => {
   try {
     const backendBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     const isAbsolute = relativeUrl.startsWith('http');
-    const url = isAbsolute ? relativeUrl : `${backendBase}${relativeUrl}`;
+    const url = isAbsolute ? relativeUrl : `${backendBase.replace(/\/+$/, '')}${relativeUrl}`;
 
     const response = await axios.get(url, {
       responseType: 'blob',

@@ -30,7 +30,7 @@ const CertificateView = () => {
     const toastId = toast.loading('Preparing download…');
     try {
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const downloadUrl = rawUrl.startsWith('/api') ? `${backendUrl}${rawUrl}` : rawUrl;
+      const downloadUrl = rawUrl.startsWith('/api') ? `${backendUrl.replace(/\/+$/, '')}${rawUrl}` : rawUrl;
 
       const response = await axios.get(downloadUrl, {
         responseType: 'blob',

@@ -42,20 +42,20 @@ const POS = {
 
 
   date: {
-    x: 2050,
-    y: 3280,
-    width: 800,
-    height: 90,
-    wipe: { x: 2000, y: 3280, width: 450, height: 90 },
-    baselineAdjust: 0.4,
+    x: 2205,
+    y: 3294,
+    width: 136,
+    height: 30,
+    wipe: { x: 2200, y: 3290, width: 146, height: 38 },
+    baselineAdjust: 0.2,
   },
 
   slNo: {
-    x: 2050,
-    y: 3370,
-    width: 800,
-    height: 50,
-    wipe: { x: 2000, y: 3370, width: 450, height: 50 },
+    x: 2195,
+    y: 3379,
+    width: 146,
+    height: 35,
+    wipe: { x: 2190, y: 3375, width: 156, height: 43 },
     baselineAdjust: 0.2,
   },
 };
@@ -230,8 +230,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, formatCertDate(completionDate), POS.date, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 14,
-        minSize: 11,
+        maxSize: 8,
+        minSize: 5,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });
@@ -240,8 +240,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, getCertificateSerial(certificateId, serialNumber), POS.slNo, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 15,
-        minSize: 12,
+        maxSize: 9,
+        minSize: 6,
         align: 'left',
         baselineAdjust: POS.slNo.baselineAdjust,
       });

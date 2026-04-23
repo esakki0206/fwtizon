@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiStar, FiXCircle, FiCheckCircle, FiDownload, FiLoader, FiAlertCircle } from 'react-icons/fi';
+import { FiStar, FiXCircle, FiCheckCircle, FiDownload, FiLoader, FiAlertCircle, FiEye } from 'react-icons/fi';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+
+const BACKEND_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 const StarRating = ({ value, onChange }) => {
   const [hover, setHover] = useState(0);
@@ -101,14 +103,49 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
                   <div className="bg-primary-50 dark:bg-primary-900/20 rounded-2xl p-5 border border-primary-200 dark:border-primary-800 mb-4">
                     <p className="text-sm font-bold text-primary-700 dark:text-primary-400 mb-3">🎉 Your certificate is ready!</p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <a href={result.certificate.viewUrl} target="_blank" rel="noreferrer"
+                      <button
+                        onClick={async () => {
+                          const toastId = toast.loading('Opening certificate…');
+                          try {
+                            const url = `${BACKEND_BASE}${result.certificate.viewUrl}`;
+                            const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+                            const blob = new Blob([res.data], { type: 'application/pdf' });
+                            const blobUrl = URL.createObjectURL(blob);
+                            window.open(blobUrl, '_blank', 'noopener,noreferrer');
+                            setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+                            toast.success('Opened in new tab!', { id: toastId });
+                          } catch (err) {
+                            console.error('Certificate view error:', err);
+                            toast.error('Could not open certificate. Try downloading instead.', { id: toastId });
+                          }
+                        }}
                         className="inline-flex items-center justify-center px-5 py-2.5 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
-                        View Certificate
-                      </a>
-                      <a href={result.certificate.downloadUrl}
+                        <FiEye className="mr-2" /> View Certificate
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const toastId = toast.loading('Preparing download…');
+                          try {
+                            const url = `${BACKEND_BASE}${result.certificate.downloadUrl}`;
+                            const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+                            const blob = new Blob([res.data], { type: 'application/pdf' });
+                            const blobUrl = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = blobUrl;
+                            link.download = `${result.certificate.certificateId || 'certificate'}.pdf`;
+                            document.body.appendChild(link);
+                            link.click();
+                            link.remove();
+                            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+                            toast.success('Download started!', { id: toastId });
+                          } catch (err) {
+                            console.error('Certificate download error:', err);
+                            toast.error('Download failed. Please try again.', { id: toastId });
+                          }
+                        }}
                         className="inline-flex items-center justify-center px-5 py-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         <FiDownload className="mr-2" /> Download PDF
-                      </a>
+                      </button>
                     </div>
                   </div>
                 )}

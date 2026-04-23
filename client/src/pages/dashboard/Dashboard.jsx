@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { FiBookOpen, FiActivity, FiAward, FiCompass, FiPlayCircle, FiClock, FiVideo, FiBell, FiArrowRight, FiLock, FiMessageSquare, FiDownload, FiCheckCircle } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+
+const BACKEND_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 import toast from 'react-hot-toast';
 import CourseCard from '../../components/common/CourseCard';
 import { Button } from '../../components/ui/button';
@@ -348,10 +350,30 @@ const Dashboard = () => {
                               <FiCheckCircle className="mr-1.5" size={14}/> Feedback submitted
                             </div>
                             {fbStatus.certificate && (
-                              <a href={fbStatus.certificate.downloadUrl}
+                              <button
+                                onClick={async () => {
+                                  const toastId = toast.loading('Preparing download…');
+                                  try {
+                                    const url = `${BACKEND_BASE}${fbStatus.certificate.downloadUrl}`;
+                                    const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+                                    const blob = new Blob([res.data], { type: 'application/pdf' });
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    const link = document.createElement('a');
+                                    link.href = blobUrl;
+                                    link.download = `${fbStatus.certificate.certificateId || 'certificate'}.pdf`;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    link.remove();
+                                    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+                                    toast.success('Download started!', { id: toastId });
+                                  } catch (err) {
+                                    console.error('Certificate download error:', err);
+                                    toast.error('Download failed. Please try again.', { id: toastId });
+                                  }
+                                }}
                                 className="w-full flex items-center justify-center py-2.5 px-4 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
                                 <FiDownload className="mr-2" /> Download Certificate
-                              </a>
+                              </button>
                             )}
                           </div>
                         ) : fbStatus.isUnlocked ? (

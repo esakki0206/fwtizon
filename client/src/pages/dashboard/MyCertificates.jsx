@@ -55,9 +55,13 @@ const MyCertificates = () => {
     // Append token for protected routes
     const token = localStorage.getItem('token');
     const authUrl = token ? `${url}${url.includes('?') ? '&' : '?'}token=${token}` : url;
+    
+    // Prepend backend URL if relative path
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const fullUrl = authUrl.startsWith('/api') ? `${backendUrl}${authUrl}` : authUrl;
 
     const link = document.createElement('a');
-    link.href = authUrl;
+    link.href = fullUrl;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     document.body.appendChild(link);

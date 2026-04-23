@@ -6,6 +6,9 @@ import { Button } from '../../components/ui/button';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const getFullUrl = (url) => url.startsWith('/api') ? `${BACKEND_URL}${url}` : url;
+
 const CertificateManager = () => {
   const [activeTab, setActiveTab] = useState('certificates');
   const [certificates, setCertificates] = useState([]);
@@ -158,7 +161,7 @@ const CertificateManager = () => {
     { header: 'Action', accessorKey: 'actions', cell: (row) => (
       <div className="flex space-x-2">
         <a
-          href={row.viewUrl ? `${row.viewUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/view?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`}
+          href={getFullUrl(row.viewUrl ? `${row.viewUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/view?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`)}
           target="_blank"
           rel="noreferrer"
           title="View PDF"
@@ -167,7 +170,7 @@ const CertificateManager = () => {
           <FiExternalLink size={14} />
         </a>
         <a
-          href={row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/download?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`}
+          href={getFullUrl(row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/certificates/download?certificateId=${encodeURIComponent(row.certificateId)}&token=${localStorage.getItem('token') || ''}`)}
           target="_blank"
           rel="noreferrer"
           title="Download PDF"
@@ -198,7 +201,7 @@ const CertificateManager = () => {
     { header: 'Date', accessorKey: 'createdAt', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.createdAt).toLocaleDateString()}</span> },
     { header: 'Download', accessorKey: 'actions', cell: (row) => (
       <div className="flex space-x-2">
-        <a href={row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/receipts/download?receiptId=${encodeURIComponent(row.receiptId)}&token=${localStorage.getItem('token') || ''}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /> Download</a>
+        <a href={getFullUrl(row.downloadUrl ? `${row.downloadUrl}&token=${localStorage.getItem('token') || ''}` : `/api/receipts/download?receiptId=${encodeURIComponent(row.receiptId)}&token=${localStorage.getItem('token') || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"><FiDownload size={14} /> Download</a>
       </div>
     )}
   ];

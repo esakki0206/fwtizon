@@ -25,7 +25,12 @@ const CertificateView = () => {
   }, [id]);
 
   const handleDownload = () => {
-    const downloadUrl = certData?.downloadUrl || `/api/certificates/${id}/download`;
+    const rawUrl = certData?.downloadUrl || `/api/certificates/download?certificateId=${encodeURIComponent(id)}`;
+    
+    // Prepend backend URL if relative path
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const downloadUrl = rawUrl.startsWith('/api') ? `${backendUrl}${rawUrl}` : rawUrl;
+
     const link = document.createElement('a');
     link.href = downloadUrl;
     document.body.appendChild(link);

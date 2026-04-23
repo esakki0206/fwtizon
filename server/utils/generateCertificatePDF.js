@@ -1,4 +1,4 @@
-﻿import PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -23,7 +23,7 @@ const COLOR_NAVY = '#1B2A4A';
 const POS = {
   name: {
     x: 620,
-    y: 1108,          // ⬅️ FIXED (was 1150 → too high)
+    y: 1095,          // ⬅️ FIXED (was 1150 → too high)
     width: 1240,
     height: 180,      // ⬅️ tighter box (prevents vertical drift)
     wipe: { x: 660, y: 1108, width: 1160, height: 200 },
@@ -32,46 +32,30 @@ const POS = {
 
   course: {
     x: 700,
-    y: 1305,          // ⬅️ FIXED (moved down for proper spacing)
+    y: 1355,          // ⬅️ FIXED (moved down for proper spacing)
     width: 1080,
     height: 160,
     wipe: { x: 820, y: 1305, width: 860, height: 180 },
     baselineAdjust: 2,
   },
 
-  domain: {
-    x: 195,
-    y: 1880,
-    width: 600,
-    height: 120,
-    wipe: { x: 195, y: 1880, width: 600, height: 120 },
-    baselineAdjust: 0.5,
-  },
 
-  expertise: {
-    x: 470,
-    y: 2055,
-    width: 650,
-    height: 90,
-    wipe: { x: 470, y: 2055, width: 650, height: 90 },
-    baselineAdjust: 0.5,
-  },
 
   date: {
     x: 2195,
     y: 3280,
-    width: 160,
+    width: 250,
     height: 90,
-    wipe: { x: 2195, y: 3280, width: 160, height: 90 },
+    wipe: { x: 2195, y: 3280, width: 250, height: 90 },
     baselineAdjust: 0.4,
   },
 
   slNo: {
     x: 2195,
     y: 3370,
-    width: 120,
+    width: 250,
     height: 50,
-    wipe: { x: 2195, y: 3370, width: 120, height: 50 },
+    wipe: { x: 2195, y: 3370, width: 250, height: 50 },
     baselineAdjust: 0.2,
   },
 };
@@ -240,32 +224,14 @@ export const generateCertificatePDF = (data) => {
         baselineAdjust: POS.course.baselineAdjust,
       });
 
-      whiteout(doc, POS.domain.wipe);
-      drawSingleLine(doc, String(domain), POS.domain, {
-        font: 'Helvetica-Bold',
-        color: COLOR_DARK,
-        maxSize: 18,
-        minSize: 11,
-        align: 'left',
-        baselineAdjust: POS.domain.baselineAdjust,
-      });
 
-      whiteout(doc, POS.expertise.wipe);
-      drawSingleLine(doc, String(areaOfExpertise), POS.expertise, {
-        font: 'Helvetica-Bold',
-        color: COLOR_DARK,
-        maxSize: 18,
-        minSize: 10,
-        align: 'left',
-        baselineAdjust: POS.expertise.baselineAdjust,
-      });
 
       whiteout(doc, POS.date.wipe);
       drawSingleLine(doc, formatCertDate(completionDate), POS.date, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 8.8,
-        minSize: 7,
+        maxSize: 14,
+        minSize: 11,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });
@@ -274,8 +240,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, getCertificateSerial(certificateId, serialNumber), POS.slNo, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 9.5,
-        minSize: 8,
+        maxSize: 15,
+        minSize: 12,
         align: 'left',
         baselineAdjust: POS.slNo.baselineAdjust,
       });

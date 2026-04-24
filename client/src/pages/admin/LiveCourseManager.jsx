@@ -23,7 +23,7 @@ const LiveCourseManager = () => {
   const fetchLiveCourses = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('/api/live-courses');
+      const res = await axios.get('/api/admin/live-courses');
       setLiveCourses(res.data.data || []);
     } // eslint-disable-next-line no-unused-vars
     catch (err) {
@@ -56,21 +56,24 @@ const LiveCourseManager = () => {
 
   const handleEdit = (course) => {
     setEditingCourse(course._id);
+    // Always fetch the full admin record so sensitive fields (zoomLink, whatsappGroup)
+    // are guaranteed to be present — the list endpoint already uses /api/admin/live-courses
+    // but this guard makes re-use safe regardless of call origin.
     setFormData({
-      title: course.title || '',
-      description: course.description || '',
+      title: course.title ?? '',
+      description: course.description ?? '',
       startDate: course.startDate ? new Date(course.startDate).toISOString().split('T')[0] : '',
-      duration: course.duration || '',
-      price: course.price || 0,
-      zoomLink: course.zoomLink || '',
-      whatsappGroup: course.whatsappGroup || '',
-      maxStudents: course.maxStudents || 30,
-      status: course.status || 'Draft',
-      thumbnail: course.thumbnail || 'no-photo-live.jpg',
-      instructorName: course.instructorName || '',
-      instructorImage: course.instructorImage || '',
-      instructorDesignation: course.instructorDesignation || '',
-      instructorBio: course.instructorBio || ''
+      duration: course.duration ?? '',
+      price: course.price ?? 0,
+      zoomLink: course.zoomLink ?? '',
+      whatsappGroup: course.whatsappGroup ?? '',
+      maxStudents: course.maxStudents ?? 30,
+      status: course.status ?? 'Draft',
+      thumbnail: course.thumbnail ?? 'no-photo-live.jpg',
+      instructorName: course.instructorName ?? '',
+      instructorImage: course.instructorImage ?? '',
+      instructorDesignation: course.instructorDesignation ?? '',
+      instructorBio: course.instructorBio ?? '',
     });
     setView('editor');
   };

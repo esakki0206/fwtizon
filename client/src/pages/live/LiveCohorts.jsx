@@ -15,7 +15,7 @@ const LiveCohorts = () => {
         const res = await axios.get('/api/live-courses');
         setCohorts(res.data.data || []);
       } catch (err) {
-        toast.error('Failed to load live cohorts');
+        toast.error('Failed to load live courses');
       } finally {
         setLoading(false);
       }
@@ -30,7 +30,7 @@ const LiveCohorts = () => {
         <div className="text-center mb-10 md:mb-16 max-w-3xl mx-auto px-2">
           <div className="inline-flex items-center px-4 py-2 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold mb-5 md:mb-6 text-xs uppercase tracking-widest border border-red-200 dark:border-red-800/50">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2.5 animate-pulse"></span>
-            LIVE COHORTS
+            LIVE COURSES
           </div>
           <h1 className="text-3xl md:text-5xl font-black text-gray-900 dark:text-white mb-4 leading-tight tracking-tight">Interactive, peer-driven live masterclasses</h1>
           <p className="text-base md:text-xl text-gray-600 dark:text-gray-400 leading-relaxed">Join small batches of ambitious peers and learn directly from industry experts in real-time.</p>
@@ -121,7 +121,7 @@ const LiveCohorts = () => {
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl p-12 text-center shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-800">
             <FiVideo className="mx-auto text-gray-300 dark:text-gray-600 mb-6" size={64} />
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">No Live Cohorts Available</h3>
+            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">No Live Courses Available</h3>
             <p className="text-gray-500 max-w-md mx-auto">We are currently planning our next batch of live masterclasses. Check back soon or subscribe to our newsletter for updates.</p>
           </div>
         )}

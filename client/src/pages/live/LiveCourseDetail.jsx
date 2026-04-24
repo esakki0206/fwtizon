@@ -440,18 +440,28 @@ const LiveCourseDetail = () => {
       {/* Enrollment Modal */}
       <AnimatePresence>
         {isModalOpen && course && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-gray-950/70 backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800"
+              initial={{ opacity: 0, y: 40, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="bg-white dark:bg-gray-900 w-full sm:rounded-2xl sm:max-w-lg flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800"
+              style={{
+                maxHeight: 'min(90dvh, 100dvh)',
+                // Respect device safe areas (notch / home indicator)
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+              }}
             >
-              <div className="p-4 sm:p-5 md:p-6 lg:p-8">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1 md:mb-2">Enrollment Application</h2>
-                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">Complete checkout for <strong>{course.title}</strong>.</p>
+              {/* ── Sticky Header ─────────────────────────────── */}
+              <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b border-gray-100 dark:border-gray-800">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1">Enrollment Application</h2>
+                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Complete checkout for <strong>{course.title}</strong>.</p>
+              </div>
 
-                <form onSubmit={processPayment} className="space-y-3 md:space-y-4">
+              {/* ── Scrollable form body ───────────────────────── */}
+              <div className="overflow-y-auto overscroll-contain flex-1">
+                <form id="enrollment-form" onSubmit={processPayment} className="px-4 sm:px-6 py-4 space-y-3 md:space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                     <div>
                       <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name <span className="text-red-500">*</span></label>
@@ -499,14 +509,25 @@ const LiveCourseDetail = () => {
                       </select>
                     </div>
                   </div>
-
-                  <div className="pt-4 md:pt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 md:py-3.5 rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs md:text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition">Cancel</button>
-                    <button type="submit" className="flex-1 px-4 py-2.5 md:py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs md:text-sm rounded-lg md:rounded-xl transition shadow-xl shadow-primary-600/20 active:scale-[0.98]">
-                      Apply & Pay ₹{course.price}
-                    </button>
-                  </div>
                 </form>
+              </div>
+
+              {/* ── Sticky Footer — always visible ─────────────── */}
+              <div className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-3 rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs md:text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="enrollment-form"
+                  className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs md:text-sm rounded-lg md:rounded-xl transition shadow-xl shadow-primary-600/20 active:scale-[0.98]"
+                >
+                  Apply &amp; Pay &#8377;{course.price}
+                </button>
               </div>
             </motion.div>
           </div>

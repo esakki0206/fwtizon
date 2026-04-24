@@ -437,70 +437,142 @@ const LiveCourseDetail = () => {
         </div>
       </div>
 
-      {/* Enrollment Modal */}
+      {/* ─────────────────────────────────────────────────────────────
+           Enrollment Modal
+         z-[9999] ensures it renders above the bottom nav bar
+       (which typically uses z-50) on all devices.
+      ───────────────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {isModalOpen && course && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-gray-950/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 40, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 40, scale: 0.97 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="bg-white dark:bg-gray-900 w-full sm:rounded-2xl sm:max-w-lg flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800"
-              style={{
-                maxHeight: 'min(90dvh, 100dvh)',
-                // Respect device safe areas (notch / home indicator)
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-              }}
-            >
-              {/* ── Sticky Header ─────────────────────────────── */}
-              <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b border-gray-100 dark:border-gray-800">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1">Enrollment Application</h2>
-                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Complete checkout for <strong>{course.title}</strong>.</p>
-              </div>
+      {isModalOpen && course && (
+      <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-950/75 backdrop-blur-sm"
+      style={{ padding: 'max(12px, env(safe-area-inset-top, 12px)) 12px max(12px, env(safe-area-inset-bottom, 12px)) 12px' }}
+      >
+      <motion.div
+      initial={{ opacity: 0, scale: 0.94, y: 16 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.94, y: 16 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+      className="relative bg-white dark:bg-gray-900 w-full max-w-lg rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden"
+      style={{ maxHeight: 'min(88vh, 680px)' }}
+      >
 
-              {/* ── Scrollable form body ───────────────────────── */}
-              <div className="overflow-y-auto overscroll-contain flex-1">
-                <form id="enrollment-form" onSubmit={processPayment} className="px-4 sm:px-6 py-4 space-y-3 md:space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                    <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name <span className="text-red-500">*</span></label>
-                      <input type="text" required value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
-                    </div>
-                    <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-red-500">*</span></label>
-                      <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+      {/* ── Header ─────────────────────────────────────── */}
+              <div className="flex-shrink-0 flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-snug">Enrollment Application</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">Checkout for <span className="font-semibold text-gray-700 dark:text-gray-200">{course.title}</span></p>
+      </div>
+      {/* ✕ close button */}
+      <button
+      type="button"
+      onClick={() => setIsModalOpen(false)}
+      aria-label="Close"
+      className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+      >
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+      </button>
+      </div>
+
+      {/* ── Scrollable Form Body ────────────────────────── */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+      <form id="enrollment-form" onSubmit={processPayment} className="px-5 sm:px-6 py-4 space-y-3">
+
+      {/* Name + Email side-by-side on sm+ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+        Full Name <span className="text-red-500">*</span>
+      </label>
+      <input
+      type="text" required
+      value={formData.fullName}
+        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+          placeholder="Your full name"
+            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
+        </div>
+      <div>
+      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+        Email <span className="text-red-500">*</span>
+        </label>
+        <input
+        type="email" required
+        value={formData.email}
+      onChange={e => setFormData({ ...formData, email: e.target.value })}
+      placeholder="you@example.com"
+      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+      />
+      </div>
+      </div>
+
+      {/* Mobile + WhatsApp always side-by-side (2 cols) */}
+        <div className="grid grid-cols-2 gap-3">
+            <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                Mobile <span className="text-red-500">*</span>
+              </label>
+            <input
+            type="tel" required
+            value={formData.phone}
+            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="10-digit"
+            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+            />
+          </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+            WhatsApp <span className="text-red-500">*</span>
+            </label>
+          <input
+              type="tel" required
+                value={formData.whatsappNumber}
+                  onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })}
+                    placeholder="WhatsApp no."
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-                    <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mobile No <span className="text-red-500">*</span></label>
-                      <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
-                    </div>
-                    <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">WhatsApp <span className="text-red-500">*</span></label>
-                      <input type="tel" required value={formData.whatsappNumber} onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
-                    </div>
-                    <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gender <span className="text-red-500">*</span></label>
-                      <select required value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors">
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
-                    </div>
+                  {/* Gender — full width select */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                      Gender <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                  {/* Department + Experience side-by-side on sm+ */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Department (Optional)</label>
-                      <input type="text" value={formData.courseDepartment} onChange={e => setFormData({ ...formData, courseDepartment: e.target.value })} placeholder="e.g. Computer Science" className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                      <input
+                        type="text"
+                        value={formData.courseDepartment}
+                        onChange={e => setFormData({ ...formData, courseDepartment: e.target.value })}
+                        placeholder="e.g. Computer Science"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
                     </div>
                     <div>
-                      <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Experience Level (Optional)</label>
-                      <select value={formData.experienceLevel} onChange={e => setFormData({ ...formData, experienceLevel: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors">
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Experience <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                      <select
+                        value={formData.experienceLevel}
+                        onChange={e => setFormData({ ...formData, experienceLevel: e.target.value })}
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      >
                         <option value="">Select Level</option>
                         <option value="Student">Student</option>
                         <option value="Fresher">Fresher</option>
@@ -509,26 +581,43 @@ const LiveCourseDetail = () => {
                       </select>
                     </div>
                   </div>
+
+                  {/* Bottom spacer so last field isn't flush against footer */}
+                  <div className="h-1" />
                 </form>
               </div>
 
-              {/* ── Sticky Footer — always visible ─────────────── */}
-              <div className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-3 rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs md:text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  form="enrollment-form"
-                  className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs md:text-sm rounded-lg md:rounded-xl transition shadow-xl shadow-primary-600/20 active:scale-[0.98]"
-                >
-                  Apply &amp; Pay &#8377;{course.price}
-                </button>
+              {/* ── Sticky Footer — ALWAYS VISIBLE ─────────────── */}
+              <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+                {/* Price badge */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Registration Fee</span>
+                  <span className="text-base font-black text-gray-900 dark:text-white">₹{course.price}</span>
+                </div>
+                {/* Buttons — side-by-side, equal width */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="flex-1 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold text-sm hover:bg-gray-50 dark:hover:bg-gray-800 active:scale-[0.98] transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form="enrollment-form"
+                    className="flex-[2] py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-primary-600/30 active:scale-[0.98] transition"
+                  >
+                    Apply &amp; Pay &#8377;{course.price}
+                  </button>
+                </div>
+                {/* Trust badge */}
+                <p className="mt-2 text-center text-xs text-gray-400 flex items-center justify-center gap-1">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                  Secured by Razorpay
+                </p>
               </div>
+
             </motion.div>
           </div>
         )}

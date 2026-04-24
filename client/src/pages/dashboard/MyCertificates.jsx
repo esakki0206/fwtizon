@@ -38,7 +38,7 @@ const downloadPdf = async (relativeUrl, filename) => {
     toast.error(
       err.response?.status === 403 ? 'Access denied — please log in again.'
         : err.response?.status === 404 ? 'File not found. Please contact support.'
-        : 'Download failed. Please try again.',
+          : 'Download failed. Please try again.',
       { id: toastId }
     );
   }
@@ -170,11 +170,10 @@ const MyCertificates = () => {
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className={`relative flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 md:px-6 py-2.5 text-sm font-bold rounded-lg md:rounded-xl transition-all duration-200 ${
-                activeTab === key
+              className={`relative flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 md:px-6 py-2.5 text-sm font-bold rounded-lg md:rounded-xl transition-all duration-200 ${activeTab === key
                   ? 'text-white shadow-md'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-              }`}
+                }`}
             >
               {activeTab === key && (
                 <motion.div
@@ -186,11 +185,10 @@ const MyCertificates = () => {
               <span className="relative z-10 flex items-center gap-2">
                 <Icon size={15} />
                 <span className="hidden xs:inline">{label}</span>
-                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                  activeTab === key
+                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${activeTab === key
                     ? 'bg-white/20 text-white'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-                }`}>{count}</span>
+                  }`}>{count}</span>
               </span>
             </button>
           ))}
@@ -231,7 +229,7 @@ const MyCertificates = () => {
                       Icon={FiAward}
                       gradient="from-primary-500 to-purple-600"
                       title="No certificates yet"
-                      description="Complete a course or submit feedback for a live cohort to earn your official certificate."
+                      description="Complete a course or submit feedback for a live course to earn your official certificate."
                       action={<Link to="/dashboard" className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm px-6 py-2.5 rounded-xl font-bold shadow-md shadow-primary-500/20 transition-colors">Go to Dashboard</Link>}
                     />
                   ) : (

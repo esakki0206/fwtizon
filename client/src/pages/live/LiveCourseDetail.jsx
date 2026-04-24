@@ -16,15 +16,15 @@ const LiveCourseDetail = () => {
   const navigate = useNavigate();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ 
-    fullName: user?.name || '', 
-    email: user?.email || '', 
-    phone: '', 
+  const [formData, setFormData] = useState({
+    fullName: user?.name || '',
+    email: user?.email || '',
+    phone: '',
     whatsappNumber: '',
     gender: 'Prefer not to say',
     courseDepartment: '',
     experienceLevel: '',
-    message: '' 
+    message: ''
   });
 
   useEffect(() => {
@@ -56,10 +56,10 @@ const LiveCourseDetail = () => {
   if (!course) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <FiVideo size={64} className="text-gray-300 dark:text-gray-700 mb-4" />
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Live Cohort Not Found</h2>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Live Course Not Found</h2>
       <p className="text-gray-500 mb-6">The course you are looking for does not exist or has been removed.</p>
       <Link to="/live-courses" className="px-6 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition">
-        Browse Available Cohorts
+        Browse Available Courses
       </Link>
     </div>
   );
@@ -173,7 +173,7 @@ const LiveCourseDetail = () => {
             <div className="space-y-3 md:space-y-4">
               <span className="inline-flex items-center px-2.5 py-0.5 md:px-3 md:py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full text-xs font-bold uppercase tracking-widest border border-primary-200 dark:border-primary-800/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary-500 mr-1.5 md:mr-2 animate-pulse" />
-                Live Cohort
+                Live Course
               </span>
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-gray-900 dark:text-white leading-tight tracking-tight">
                 {course.title}
@@ -472,7 +472,7 @@ const LiveCourseDetail = () => {
                       <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm focus:ring-2 focus:ring-primary-500 transition-colors" />
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                     <div>
                       <label className="block text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mobile No <span className="text-red-500">*</span></label>

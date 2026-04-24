@@ -368,7 +368,7 @@ export const getMyCourses = async (req, res) => {
       })
       .populate({
         path: 'liveCourse',
-        select: 'title thumbnail instructor category zoomLink whatsappGroup startDate duration schedule price',
+        select: 'title thumbnail instructor category zoomLink whatsappGroup startDate classStartTime classEndTime timezone duration schedule price',
         populate: { path: 'instructor', select: 'name avatar' },
       });
 

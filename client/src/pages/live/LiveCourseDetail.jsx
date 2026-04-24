@@ -6,6 +6,7 @@ import { AnimatePresence } from 'framer-motion';
 import { FiVideo, FiCalendar, FiUsers, FiClock, FiCheckCircle, FiChevronDown, FiBookOpen, FiStar, FiFileText } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import { formatLiveCourseDate, formatTimeValue, getLiveCourseTimingText } from '../../lib/liveCourseTiming';
 
 const LiveCourseDetail = () => {
   const { courseId } = useParams();
@@ -181,6 +182,16 @@ const LiveCourseDetail = () => {
               <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400 leading-relaxed max-w-3xl">
                 {course.description}
               </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  <FiCalendar className="mr-1.5" size={12} /> {formatLiveCourseDate(course, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </span>
+                {getLiveCourseTimingText(course) ? (
+                  <span className="inline-flex items-center rounded-full bg-primary-50 dark:bg-primary-900/20 px-3 py-1 text-xs font-semibold text-primary-700 dark:text-primary-300">
+                    <FiClock className="mr-1.5" size={12} /> {getLiveCourseTimingText(course)}
+                  </span>
+                ) : null}
+              </div>
 
               {/* Instructor Mini Profile */}
               <div className="flex items-start mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-800/80">
@@ -281,7 +292,7 @@ const LiveCourseDetail = () => {
                         {course.schedule.map((slot, idx) => (
                           <tr key={idx} className="border-b border-gray-100 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition">
                             <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-semibold text-gray-900 dark:text-white">{slot.day}</td>
-                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400 flex items-center"><FiClock className="mr-1 md:mr-2 opacity-60" size={14} />{slot.time}</td>
+                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400 flex items-center"><FiClock className="mr-1 md:mr-2 opacity-60" size={14} />{formatTimeValue(slot.time) || slot.time}</td>
                             <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400">{slot.topic}</td>
                           </tr>
                         ))}
@@ -365,13 +376,13 @@ const LiveCourseDetail = () => {
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Start Date</span>
                     <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
-                      {new Date(course.startDate).toLocaleDateString('en-GB')}
+                      {formatLiveCourseDate(course, 'en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Duration</span>
+                    <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Class Timing</span>
                     <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
-                      {course.duration || 'N/A'}
+                      {getLiveCourseTimingText(course) || 'To be announced'}
                     </span>
                   </div>
                   <div>
@@ -381,6 +392,12 @@ const LiveCourseDetail = () => {
                     </span>
                   </div>
                   <div>
+                    <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Duration</span>
+                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
+                      {course.duration || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="col-span-2">
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Availability</span>
                     <span className={`text-sm md:text-base font-bold flex items-center ${isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'}`}>
                       {course.maxStudents - course.currentEnrollments} left

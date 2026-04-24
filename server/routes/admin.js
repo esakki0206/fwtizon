@@ -14,6 +14,7 @@ import Receipt from '../models/Receipt.js';
 import Counter from '../models/Counter.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import { sanitizeLiveCoursePayload } from '../utils/liveCoursePayload.js';
 import { protect, authorize } from '../middleware/auth.js';
 import sendEmail from '../utils/sendEmail.js';
 import {
@@ -1600,29 +1601,38 @@ router.get('/live-courses', protect, authorize('admin', 'instructor'), async (re
 
 router.post('/live-courses', protect, authorize('admin', 'instructor'), async (req, res) => {
   try {
-    req.body.instructor = req.user.id;
-    const course = await LiveCourse.create(req.body);
+    const payload = sanitizeLiveCoursePayload(req.body);
+    payload.instructor = req.user.id;
+    const course = await LiveCourse.create(payload);
     res.status(201).json({ success: true, data: course });
   } catch (err) {
     console.error('Live course creation error:', err);
-    res.status(500).json({ success: false, message: 'Error creating live course' });
+    res.status(err.statusCode || 500).json({ success: false, message: err.message || 'Error creating live course' });
   }
 });
 
 router.put('/live-courses/:id', protect, authorize('admin', 'instructor'), async (req, res) => {
   try {
-    let course = await LiveCourse.findById(req.params.id);
+    const course = await LiveCourse.findById(req.params.id);
     if (!course) return res.status(404).json({ success: false, message: 'LiveCourse not found' });
 
-    // Protect links from accidental null overwrites
-    req.body.zoomLink = req.body.zoomLink || course.zoomLink;
-    req.body.whatsappGroup = req.body.whatsappGroup || course.whatsappGroup;
+    const payload = sanitizeLiveCoursePayload(req.body, { existingCourse: course });
 
-    course = await LiveCourse.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!payload.zoomLink && course.zoomLink) {
+      payload.zoomLink = course.zoomLink;
+    }
+
+    if (!payload.whatsappGroup && course.whatsappGroup) {
+      payload.whatsappGroup = course.whatsappGroup;
+    }
+
+    Object.assign(course, payload);
+    await course.save();
+
     res.status(200).json({ success: true, data: course });
   } catch (err) {
     console.error('Live course update error:', err);
-    res.status(500).json({ success: false, message: 'Error updating live course' });
+    res.status(err.statusCode || 500).json({ success: false, message: err.message || 'Error updating live course' });
   }
 });
 

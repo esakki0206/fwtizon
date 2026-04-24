@@ -6,6 +6,7 @@ import axios from 'axios';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { formatLiveCourseDate, getLiveCourseTimingText } from '../lib/liveCourseTiming';
 
 const Home = () => {
   const { user } = useAuth();
@@ -99,7 +100,7 @@ const Home = () => {
                 <motion.div
                   animate={{ y: [-8, 8, -8] }}
                   transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute -left-8 top-20 bg-white dark:bg-gray-900 p-4 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 z-20 flex items-center space-x-3"
+                  className="absolute -left-5.5 top-0 bg-white dark:bg-gray-900 p-4 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 z-20 flex items-center space-x-3"
                 >
                   <div className="h-11 w-11 rounded-full bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center text-accent-600">
                     <FiUsers size={22} />
@@ -257,11 +258,11 @@ const Home = () => {
                     <div className="grid grid-cols-2 gap-2 mb-6 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-2xl border border-gray-100 dark:border-gray-800 flex-grow">
                       <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">
                         <span className="text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-wider mb-0.5 flex items-center"><FiCalendar className="mr-1" size={10} /> Starts</span>
-                        <span className="font-bold text-gray-900 dark:text-white text-[11px]">{new Date(cohort.startDate || cohort.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span className="font-bold text-gray-900 dark:text-white text-[11px]">{formatLiveCourseDate(cohort, 'en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                       </div>
                       <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">
-                        <span className="text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-wider mb-0.5 flex items-center"><FiClock className="mr-1" size={10} /> Duration</span>
-                        <span className="font-bold text-gray-900 dark:text-white text-[11px]">{cohort.duration || '4 Weeks'}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-wider mb-0.5 flex items-center"><FiClock className="mr-1" size={10} /> Timing</span>
+                        <span className="font-bold text-gray-900 dark:text-white text-[11px] leading-snug">{getLiveCourseTimingText(cohort) || cohort.duration || 'To be announced'}</span>
                       </div>
                     </div>
 

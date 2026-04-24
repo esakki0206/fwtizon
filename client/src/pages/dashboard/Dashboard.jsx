@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import CourseCard from '../../components/common/CourseCard';
 import { Button } from '../../components/ui/button';
 import FeedbackFormModal from '../../components/common/FeedbackFormModal';
+import { formatLiveCourseDate, formatLiveCourseStartLabel, getLiveCourseTimingText, getLiveCourseUpcomingTimestamp } from '../../lib/liveCourseTiming';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -98,10 +99,13 @@ const Dashboard = () => {
   const continueLearning = enrollments.find(e => e.status === 'active' && e.course);
 
   // Filter upcoming live courses (future dates)
-  const upcomingLive = liveCourses.filter(lc => {
-    const startDate = new Date(lc.startDate || lc.createdAt);
-    return startDate >= new Date();
-  }).slice(0, 3);
+  const upcomingLive = liveCourses
+    .filter((lc) => {
+      const startsAt = getLiveCourseUpcomingTimestamp(lc);
+      return startsAt !== null && startsAt >= Date.now();
+    })
+    .sort((a, b) => getLiveCourseUpcomingTimestamp(a) - getLiveCourseUpcomingTimestamp(b))
+    .slice(0, 3);
 
   const courseEnrollments = enrollments.filter(e => e.course);
   const liveEnrollments = enrollments.filter(e => e.liveCourse);
@@ -222,10 +226,11 @@ const Dashboard = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">{lc.title}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5 flex items-center">
+                          <p className="text-xs text-gray-500 mt-0.5 flex items-center leading-relaxed">
                             <FiClock className="mr-1" size={11} />
-                            {new Date(lc.startDate || lc.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            <span className="truncate">{formatLiveCourseStartLabel(lc, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </p>
+                          {lc.duration ? <p className="text-[11px] text-gray-400 mt-1">Program duration: {lc.duration}</p> : null}
                         </div>
                       </div>
                     </div>
@@ -327,7 +332,12 @@ const Dashboard = () => {
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 leading-snug line-clamp-2">{en.liveCourse?.title}</h3>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 mb-4">Starts: {new Date(en.liveCourse?.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                  <div className="space-y-1.5 mt-2 mb-4">
+                    <p className="text-xs text-gray-500">Starts: {formatLiveCourseDate(en.liveCourse, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                    {getLiveCourseTimingText(en.liveCourse) ? (
+                      <p className="text-xs text-gray-500">Timing: {getLiveCourseTimingText(en.liveCourse)}</p>
+                    ) : null}
+                  </div>
                   
                   <div className="flex flex-col space-y-3">
                     {en.liveCourse?.zoomLink && (

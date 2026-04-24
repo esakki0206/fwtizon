@@ -4,6 +4,7 @@ import { FiVideo, FiCalendar, FiUsers, FiClock } from 'react-icons/fi';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { formatLiveCourseDate, getLiveCourseTimingText } from '../../lib/liveCourseTiming';
 
 const LiveCohorts = () => {
   const [cohorts, setCohorts] = useState([]);
@@ -86,11 +87,11 @@ const LiveCohorts = () => {
                   <div className="grid grid-cols-2 gap-3 mb-8 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex-grow">
                     <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">
                       <span className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center"><FiCalendar className="mr-1.5" size={12} /> Starts</span>
-                      <span className="font-bold text-gray-900 dark:text-white text-xs">{new Date(cohort.startDate || cohort.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      <span className="font-bold text-gray-900 dark:text-white text-xs">{formatLiveCourseDate(cohort, 'en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                     </div>
                     <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">
-                      <span className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center"><FiVideo className="mr-1.5" size={12} /> Format</span>
-                      <span className="font-bold text-gray-900 dark:text-white text-xs">Live Zoom</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center"><FiClock className="mr-1.5" size={12} /> Timing</span>
+                      <span className="font-bold text-gray-900 dark:text-white text-xs leading-snug">{getLiveCourseTimingText(cohort) || 'To be announced'}</span>
                     </div>
                     <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">
                       <span className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center"><FiUsers className="mr-1.5" size={12} /> Size</span>

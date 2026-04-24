@@ -24,6 +24,27 @@ const liveCourseSchema = new mongoose.Schema({
   },
   startDate: Date,
   endDate: Date,
+  classStartTime: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: (value) => !value || /^([01]\d|2[0-3]):([0-5]\d)$/.test(value),
+      message: 'Class start time must be in HH:mm format',
+    },
+  },
+  classEndTime: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: (value) => !value || /^([01]\d|2[0-3]):([0-5]\d)$/.test(value),
+      message: 'Class end time must be in HH:mm format',
+    },
+  },
+  timezone: {
+    type: String,
+    trim: true,
+    default: 'Asia/Kolkata',
+  },
   schedule: [{
     day: String, // e.g. "Monday", "Wednesday"
     time: String, // e.g. "19:00"
@@ -81,6 +102,21 @@ const liveCourseSchema = new mongoose.Schema({
 
 // Auto-update status middleware
 liveCourseSchema.pre('save', function() {
+  if (this.classEndTime && !this.classStartTime) {
+    this.invalidate('classStartTime', 'Class start time is required when class end time is set');
+  }
+
+  if (this.classStartTime && this.classEndTime) {
+    const [startHours, startMinutes] = this.classStartTime.split(':').map(Number);
+    const [endHours, endMinutes] = this.classEndTime.split(':').map(Number);
+    const startTotal = (startHours * 60) + startMinutes;
+    const endTotal = (endHours * 60) + endMinutes;
+
+    if (endTotal <= startTotal) {
+      this.invalidate('classEndTime', 'Class end time must be after class start time');
+    }
+  }
+
   if (this.status !== 'Draft' && this.status !== 'Cancelled') {
     const today = new Date();
     const startDate = this.startDate ? new Date(this.startDate) : null;

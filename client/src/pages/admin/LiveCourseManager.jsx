@@ -5,6 +5,7 @@ import { AdminTable } from '../../components/admin/AdminTable';
 import { Button } from '../../components/ui/button';
 import { FiPlus, FiVideo, FiUsers, FiMessageCircle, FiTrash2, FiUploadCloud } from 'react-icons/fi';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { formatLiveCourseStartLabel, getLiveCourseTimingText } from '../../lib/liveCourseTiming';
 
 const LiveCourseManager = () => {
   const [view, setView] = useState('list'); // list | editor | applications
@@ -39,6 +40,8 @@ const LiveCourseManager = () => {
       title: '',
       description: '',
       startDate: new Date().toISOString().split('T')[0],
+      classStartTime: '',
+      classEndTime: '',
       duration: '',
       price: '',
       zoomLink: '',
@@ -63,6 +66,8 @@ const LiveCourseManager = () => {
       title: course.title ?? '',
       description: course.description ?? '',
       startDate: course.startDate ? new Date(course.startDate).toISOString().split('T')[0] : '',
+      classStartTime: course.classStartTime ?? '',
+      classEndTime: course.classEndTime ?? '',
       duration: course.duration ?? '',
       price: course.price ?? 0,
       zoomLink: course.zoomLink ?? '',
@@ -146,6 +151,14 @@ const LiveCourseManager = () => {
       return toast.error('Please fill required fields (Title, Date, Zoom Link)');
     }
 
+    if (formData.classEndTime && !formData.classStartTime) {
+      return toast.error('Please add a class start time before setting the end time');
+    }
+
+    if (formData.classStartTime && formData.classEndTime && formData.classEndTime <= formData.classStartTime) {
+      return toast.error('Class end time must be after class start time');
+    }
+
     try {
       if (editingCourse) {
         await axios.put(`/api/admin/live-courses/${editingCourse}`, formData);
@@ -163,7 +176,16 @@ const LiveCourseManager = () => {
 
   const columns = [
     { header: 'Cohort Name', accessorKey: 'title', cell: (row) => <div className="font-bold text-gray-900 dark:text-white max-w-xs">{row.title}</div> },
-    { header: 'Start Date', accessorKey: 'startDate', cell: (row) => <span className="text-gray-500 font-medium">{new Date(row.startDate || row.createdAt).toLocaleDateString()}</span> },
+    {
+      header: 'Schedule',
+      accessorKey: 'startDate',
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="text-gray-700 dark:text-gray-200 font-medium text-sm">{formatLiveCourseStartLabel(row, { month: 'short', day: 'numeric', year: 'numeric', includeTime: false })}</div>
+          {getLiveCourseTimingText(row) ? <div className="text-[11px] text-gray-500 mt-0.5">{getLiveCourseTimingText(row)}</div> : null}
+        </div>
+      ),
+    },
     { header: 'Enrolled', accessorKey: 'enrolled', cell: (row) => <span className="bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400 px-2 py-0.5 rounded font-bold text-xs">{row.currentEnrollments || 0} / {row.maxStudents || 30}</span> },
     { header: 'Status', accessorKey: 'status', cell: (row) => (
       <span className={`px-2 py-1 rounded text-xs font-bold ${row.status === 'Ongoing' || row.status === 'Published' ? 'bg-green-100 text-green-700 dark:bg-green-900/30' : 'bg-gray-100 text-gray-600 dark:bg-gray-800'}`}>
@@ -221,7 +243,7 @@ const LiveCourseManager = () => {
                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
                      <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="mt-1 w-full h-24 resize-none bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                    </div>
-                   <div className="grid grid-cols-2 gap-4">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                      <div>
                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Start Date <span className="text-red-500">*</span></label>
                        <input type="date" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
@@ -230,8 +252,22 @@ const LiveCourseManager = () => {
                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Duration (e.g. '8 Weeks')</label>
                        <input type="text" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                      </div>
+                     <div>
+                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Class Start Time</label>
+                       <input type="time" value={formData.classStartTime} onChange={e => setFormData({...formData, classStartTime: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                     </div>
+                     <div>
+                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Class End Time</label>
+                       <input type="time" value={formData.classEndTime} onChange={e => setFormData({...formData, classEndTime: e.target.value})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                     </div>
                    </div>
-                   <div className="grid grid-cols-2 gap-4">
+                   <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 px-4 py-3">
+                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                       This timing will be shown to learners on upcoming classes, dashboard live cards, and live course pages.
+                       {!formData.classStartTime ? ' If you leave it blank, users will only see the date.' : ''}
+                     </p>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                      <div>
                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Price (₹)</label>
                        <input type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} className="mt-1 w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />

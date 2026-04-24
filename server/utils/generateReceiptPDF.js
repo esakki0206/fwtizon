@@ -50,7 +50,7 @@ const POS = {
     y: 704,
     width: 136,
     height: 38,
-    wipe: { x: 1080, y: 700, width: 144, height: 46 },
+    wipe: { x: 1080, y: 700, width: 130, height: 43 },
     baselineAdjust: 0.2,
   },
   course: {
@@ -278,7 +278,7 @@ export const generateReceiptPDF = (data) => {
         font: 'Helvetica',
         color: COLOR_DARK,
         maxSize: 9,
-        minSize: 5,
+        minSize: 7,
         align: 'center',
         baselineAdjust: POS.course.baselineAdjust,
       });
@@ -308,7 +308,7 @@ export const generateReceiptPDF = (data) => {
         font: 'Helvetica',
         color: COLOR_BODY,
         maxSize: 8,
-        minSize: 4.5,
+        minSize: 6,
         align: 'center',
         lineGap: 1,
         baselineAdjust: POS.words.baselineAdjust,

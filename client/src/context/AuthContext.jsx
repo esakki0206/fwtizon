@@ -13,20 +13,67 @@ export const AuthProvider = ({ children }) => {
   axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   axios.defaults.withCredentials = true;
 
-  // ── Axios interceptor: auto-refresh on 401 TOKEN_EXPIRED ──
+  // ── Axios Interceptors: Auto-refresh on 401 & Inject Token ──
   useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
+    // 1. Request Interceptor: Always attach the latest token synchronously before request leaves.
+    // This perfectly solves the race condition of components fetching data on mount before state updates.
+    const requestInterceptor = axios.interceptors.request.use((config) => {
+      const currentToken = localStorage.getItem('token');
+      if (currentToken) {
+        config.headers['Authorization'] = `Bearer ${currentToken}`;
+      } else {
+        delete config.headers['Authorization'];
+      }
+      return config;
+    }, (error) => Promise.reject(error));
+
+    let isRefreshing = false;
+    let failedQueue = [];
+
+    const processQueue = (error, token = null) => {
+      failedQueue.forEach((prom) => {
+        if (error) {
+          prom.reject(error);
+        } else {
+          prom.resolve(token);
+        }
+      });
+      failedQueue = [];
+    };
+
+    // 2. Response Interceptor: Handle 401 errors, refresh token, and queue concurrent requests
+    const responseInterceptor = axios.interceptors.response.use(
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
 
-        // If token expired and not already retrying
+        // Skip auth routes to avoid infinite loops if refresh fails
         if (
-          error.response?.status === 401 &&
-          error.response?.data?.code === 'TOKEN_EXPIRED' &&
-          !originalRequest._retry
+          originalRequest.url?.includes('/api/auth/login') || 
+          originalRequest.url?.includes('/api/auth/refresh-token') || 
+          originalRequest.url?.includes('/api/auth/register') || 
+          originalRequest.url?.includes('/api/auth/google')
         ) {
+          return Promise.reject(error);
+        }
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          if (isRefreshing) {
+            // If already refreshing, pause this request and add to queue
+            return new Promise(function(resolve, reject) {
+              failedQueue.push({ resolve, reject });
+            })
+            .then((token) => {
+              originalRequest.headers['Authorization'] = 'Bearer ' + token;
+              return axios(originalRequest);
+            })
+            .catch((err) => {
+              return Promise.reject(err);
+            });
+          }
+
           originalRequest._retry = true;
+          isRefreshing = true;
 
           try {
             const res = await axios.post('/api/auth/refresh-token');
@@ -34,16 +81,20 @@ export const AuthProvider = ({ children }) => {
 
             localStorage.setItem('token', newToken);
             setToken(newToken);
-
-            // Update the failed request with new token
+            
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+            
+            processQueue(null, newToken);
             return axios(originalRequest);
           } catch (refreshError) {
+            processQueue(refreshError, null);
             // Refresh failed — force logout
             localStorage.removeItem('token');
             setToken(null);
             setUser(null);
             return Promise.reject(refreshError);
+          } finally {
+            isRefreshing = false;
           }
         }
 
@@ -51,17 +102,11 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
-    return () => axios.interceptors.response.eject(interceptor);
+    return () => {
+      axios.interceptors.request.eject(requestInterceptor);
+      axios.interceptors.response.eject(responseInterceptor);
+    };
   }, []);
-
-  // Set authorization header whenever token changes
-  useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }, [token]);
 
   const loadUser = useCallback(async () => {
     if (!token) {

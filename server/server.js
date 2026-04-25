@@ -14,6 +14,7 @@ const app = express();
 // ── Security Middleware ──
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   contentSecurityPolicy: false,
 }));
 

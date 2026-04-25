@@ -88,6 +88,7 @@ const CourseDetail = () => {
       const sdkLoaded = await loadRazorpay();
       if (!sdkLoaded) {
         toast.error('Payment gateway failed to load. Check your internet connection.');
+        setEnrolling(false);
         return;
       }
 
@@ -95,6 +96,7 @@ const CourseDetail = () => {
       const orderRes = await axios.post('/api/enroll/create-order', { courseId: course._id });
       if (!orderRes.data.success) {
         toast.error(orderRes.data.message || 'Failed to initiate payment');
+        setEnrolling(false);
         return;
       }
 

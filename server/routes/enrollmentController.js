@@ -13,6 +13,9 @@ import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { generateReceiptPDF } from '../utils/generateReceiptPDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 
+// ── Input Validation ────────────────────────────────────────────────────────
+const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+
 // ── Razorpay Configuration ──────────────────────────────────────────────────
 
 const isDummyKey = () => {
@@ -49,6 +52,14 @@ export const createOrder = async (req, res) => {
 
     if (!courseId && !liveCourseId) {
       return res.status(400).json({ success: false, message: 'courseId or liveCourseId is required' });
+    }
+
+    // Validate ObjectId format to prevent CastError crashes
+    if (courseId && !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+    if (liveCourseId && !isValidObjectId(liveCourseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
     }
 
     let targetCourse;
@@ -163,6 +174,14 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Course ID missing' });
     }
 
+    // Validate ObjectId format
+    if (courseId && !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+    if (liveCourseId && !isValidObjectId(liveCourseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
+    }
+
     // ── Signature verification ──
     let isAuthentic = false;
 
@@ -179,10 +198,20 @@ export const verifyPayment = async (req, res) => {
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
         .digest('hex');
 
-      isAuthentic = expectedSignature === razorpay_signature;
+      // Timing-safe comparison to prevent timing attacks
+      try {
+        isAuthentic = crypto.timingSafeEqual(
+          Buffer.from(expectedSignature, 'hex'),
+          Buffer.from(razorpay_signature, 'hex')
+        );
+      } catch (_bufferErr) {
+        // Buffer length mismatch = definitely not authentic
+        isAuthentic = false;
+      }
     }
 
     if (!isAuthentic) {
+      console.warn(`[SECURITY] Invalid payment signature for user ${req.user.id}, order ${razorpay_order_id}`);
       return res.status(400).json({
         success: false,
         message: 'Payment verification failed — invalid signature',
@@ -221,8 +250,6 @@ export const verifyPayment = async (req, res) => {
       enrollData.liveCourse = liveCourseId;
       // Amount comes from DB — never from the request body
       enrollData.amount = enrolledItem.price;
-      enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
-      await enrolledItem.save();
     } else if (courseId) {
       enrolledItem = await Course.findById(courseId);
       if (!enrolledItem) {
@@ -231,6 +258,37 @@ export const verifyPayment = async (req, res) => {
       enrollData.course = courseId;
       // Amount comes from DB — never from the request body
       enrollData.amount = enrolledItem.price;
+    }
+
+    if (!enrolledItem) {
+      return res.status(500).json({ success: false, message: 'Enrollment failed — course data missing' });
+    }
+
+    // ── Payment Integrity Check (Amount Verification) ──
+    if (!isDummyKey()) {
+      try {
+        const razorpay = getRazorpay();
+        const payment = await razorpay.payments.fetch(razorpay_payment_id);
+        const expectedAmountPaise = Math.round(enrolledItem.price * 100);
+        
+        if (payment.amount !== expectedAmountPaise || payment.status !== 'captured' || payment.currency !== 'INR') {
+          console.warn(`[SECURITY] Payment mismatch for order ${razorpay_order_id}. Expected: ${expectedAmountPaise}, Got: ${payment.amount}`);
+          return res.status(400).json({
+            success: false,
+            message: 'Payment verification failed — invalid amount or status',
+          });
+        }
+      } catch (fetchErr) {
+        console.error('Failed to fetch Razorpay payment details:', fetchErr.message);
+        return res.status(500).json({ success: false, message: 'Failed to verify payment integrity' });
+      }
+    }
+
+    // Increment enrollment count after confirming payment is fully valid
+    if (liveCourseId) {
+      enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
+      await enrolledItem.save();
+    } else if (courseId) {
       enrolledItem.enrollmentCount = (enrolledItem.enrollmentCount || 0) + 1;
       await enrolledItem.save();
     }
@@ -355,17 +413,36 @@ export const razorpayWebhook = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Webhook acknowledged (no-op)' });
     }
 
+    // req.body is a raw Buffer when mounted with express.raw() in server.js
+    // This preserves byte-exact body for reliable HMAC verification
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(JSON.stringify(req.body))
+      .update(rawBody)
       .digest('hex');
 
-    if (expectedSignature !== signature) {
+    // Timing-safe comparison
+    let isValid = false;
+    try {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
+    } catch (_bufferErr) {
+      isValid = false;
+    }
+
+    if (!isValid) {
+      console.warn('[SECURITY] Invalid webhook signature received');
       return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
     }
 
-    if (req.body.event === 'payment.captured') {
-      const payment = req.body.payload.payment.entity;
+    // Parse body if it came as raw buffer
+    const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+
+    if (body.event === 'payment.captured') {
+      const payment = body.payload.payment.entity;
       console.log(`[Webhook] Payment captured: ${payment.id}, amount: ₹${payment.amount / 100}`);
     }
 
@@ -404,6 +481,9 @@ export const updateProgress = async (req, res) => {
 
     if (!courseId || !lessonId) {
       return res.status(400).json({ success: false, message: 'courseId and lessonId are required' });
+    }
+    if (!isValidObjectId(courseId) || !isValidObjectId(lessonId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId or lessonId format' });
     }
 
     const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId }).populate('course');
@@ -497,6 +577,14 @@ export const checkEnrollmentStatus = async (req, res) => {
         success: false,
         message: 'courseId or liveCourseId query parameter is required',
       });
+    }
+
+    // Validate ObjectId format
+    if (courseId && !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+    if (liveCourseId && !isValidObjectId(liveCourseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
     }
 
     const query = {

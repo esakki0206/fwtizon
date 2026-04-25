@@ -30,3 +30,19 @@ export const apiLimiter = rateLimit({
     message: 'Too many requests. Please slow down.',
   },
 });
+
+/**
+ * Payment-specific rate limiter.
+ * 10 req / 15-min window — tight to prevent order flooding
+ * and brute-force signature attacks on payment endpoints.
+ */
+export const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many payment requests. Please try again later.',
+  },
+});

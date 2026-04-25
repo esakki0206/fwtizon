@@ -42,6 +42,16 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// ── Razorpay Webhook — MUST be mounted BEFORE express.json() ──
+// Razorpay signs the raw HTTP body; express.json() would parse it and
+// JSON.stringify(req.body) may differ from the original, breaking HMAC.
+import { razorpayWebhook } from './routes/enrollmentController.js';
+app.post(
+  '/api/enroll/webhook',
+  express.raw({ type: 'application/json' }),
+  razorpayWebhook
+);
+
 // ── Body Parsers ──
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

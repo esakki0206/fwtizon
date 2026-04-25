@@ -239,7 +239,26 @@ export const verifyPayment = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Enrollment failed — course data missing' });
     }
 
-    const enrollment = await Enrollment.create(enrollData);
+    let enrollment;
+    try {
+      enrollment = await Enrollment.create(enrollData);
+    } catch (createErr) {
+      // Gracefully handle duplicate-key race condition (E11000)
+      if (createErr.code === 11000) {
+        const duplicateQuery = { user: req.user.id };
+        if (liveCourseId) duplicateQuery.liveCourse = liveCourseId;
+        else if (courseId) duplicateQuery.course = courseId;
+
+        const existingRecord = await Enrollment.findOne(duplicateQuery);
+        return res.status(200).json({
+          success: true,
+          alreadyEnrolled: true,
+          message: 'Already enrolled in this course',
+          data: existingRecord,
+        });
+      }
+      throw createErr; // Re-throw non-duplicate errors
+    }
 
     // If it's a live course, also save the detailed application form
     if (liveCourseId && gender && whatsappNumber) {
@@ -459,6 +478,42 @@ export const updateProgress = async (req, res) => {
 
     res.status(200).json({ success: true, data: enrollment.progress });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── Check Enrollment Status (lightweight) ───────────────────────────────────
+/**
+ * @desc  Check if the authenticated user is enrolled in a specific course.
+ *        Returns { enrolled: true/false } — much cheaper than fetching all enrollments.
+ * @route GET /api/enroll/status?courseId=...  OR  ?liveCourseId=...
+ */
+export const checkEnrollmentStatus = async (req, res) => {
+  try {
+    const { courseId, liveCourseId } = req.query;
+
+    if (!courseId && !liveCourseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'courseId or liveCourseId query parameter is required',
+      });
+    }
+
+    const query = {
+      user: req.user.id,
+      status: { $in: ['active', 'completed'] },
+    };
+    if (liveCourseId) query.liveCourse = liveCourseId;
+    if (courseId) query.course = courseId;
+
+    const exists = await Enrollment.findOne(query).lean();
+
+    res.status(200).json({
+      success: true,
+      enrolled: !!exists,
+    });
+  } catch (error) {
+    console.error('CHECK ENROLLMENT STATUS ERROR:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };

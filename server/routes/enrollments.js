@@ -5,11 +5,13 @@ import {
   getMyCourses,
   updateProgress,
   razorpayWebhook,
+  checkEnrollmentStatus,
 } from './enrollmentController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
+router.get('/status', protect, checkEnrollmentStatus);
 router.post('/create-order', protect, createOrder);
 router.post('/verify-payment', protect, verifyPayment);
 router.get('/my-courses', protect, getMyCourses);

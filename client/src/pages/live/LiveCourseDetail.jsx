@@ -30,6 +30,7 @@ const LiveCourseDetail = () => {
   // ── Enrollment state (verified from backend, not local user object) ────────
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
 
   // ── Application modal state ────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,21 +69,13 @@ const LiveCourseDetail = () => {
     fetchCourse();
   }, [courseId]);
 
-  // ── Verify enrollment status from backend (not from stale user object) ─────
+  // ── Verify enrollment status from backend (lightweight single-course check) ─
   const checkEnrollmentStatus = useCallback(async () => {
     if (!user || !courseId) return;
     try {
       setEnrollmentLoading(true);
-      const res = await axios.get('/api/enroll/my-courses');
-      const enrollments = res.data?.data || [];
-      const alreadyEnrolled = enrollments.some(
-        (e) =>
-          e.liveCourse &&
-          (e.liveCourse._id === courseId ||
-            e.liveCourse._id?.toString() === courseId ||
-            e.liveCourse === courseId)
-      );
-      setIsEnrolled(alreadyEnrolled);
+      const res = await axios.get(`/api/enroll/status?liveCourseId=${courseId}`);
+      setIsEnrolled(res.data?.enrolled === true);
     } catch (_err) {
       // Silently ignore — don't break the page if enrollment check fails
     } finally {
@@ -155,22 +148,23 @@ const LiveCourseDetail = () => {
   const processPayment = async (e) => {
     e.preventDefault();
 
+    if (enrolling) return; // Prevent double submissions
+
     if (!formData.fullName || !formData.email || !formData.phone || !formData.whatsappNumber) {
       return toast.error('Please fill all required fields (Name, Email, Mobile, WhatsApp)');
     }
     setIsModalOpen(false);
+    setEnrolling(true);
 
     const toastId = toast.loading('Initializing secure checkout...');
 
     try {
-      // Double-check server-side enrollment before creating order
-      const checkRes = await axios.get('/api/enroll/my-courses');
-      const enrolled = (checkRes.data?.data || []).some(
-        (e) => e.liveCourse && (e.liveCourse._id === course._id || e.liveCourse === course._id)
-      );
-      if (enrolled) {
+      // Lightweight server-side enrollment check before creating order
+      const checkRes = await axios.get(`/api/enroll/status?liveCourseId=${course._id}`);
+      if (checkRes.data?.enrolled) {
         toast.dismiss(toastId);
         setIsEnrolled(true);
+        setEnrolling(false);
         toast.success('You are already enrolled in this course!');
         return;
       }
@@ -191,6 +185,7 @@ const LiveCourseDetail = () => {
         toast.success('Enrolled successfully!', { id: toastId });
         setIsEnrolled(true);
         setShowSuccessBanner(true);
+        setEnrolling(false);
         // Re-sync enrollment count
         setCourse(prev => prev ? ({ ...prev, currentEnrollments: (prev.currentEnrollments || 0) + 1 }) : prev);
         return;
@@ -201,6 +196,7 @@ const LiveCourseDetail = () => {
       const loaded = await loadRazorpayScript();
       if (!loaded) {
         toast.error('Payment SDK failed to load. Please check your internet connection.');
+        setEnrolling(false);
         return;
       }
 
@@ -234,6 +230,8 @@ const LiveCourseDetail = () => {
               err.response?.data?.message || 'Payment verification failed',
               { id: verifyingToast }
             );
+          } finally {
+            setEnrolling(false);
           }
         },
         prefill: {
@@ -244,7 +242,7 @@ const LiveCourseDetail = () => {
         theme: { color: '#4f46e5' },
         modal: {
           ondismiss: () => {
-            // User closed checkout — silently ignore
+            setEnrolling(false);
           },
         },
       };
@@ -253,6 +251,7 @@ const LiveCourseDetail = () => {
       rp.open();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to initiate checkout', { id: toastId });
+      setEnrolling(false);
     }
   };
 
@@ -314,9 +313,21 @@ const LiveCourseDetail = () => {
     return (
       <button
         onClick={handleEnrollButton}
-        className="w-full py-3 md:py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-xl shadow-primary-600/30 active:scale-[0.98] flex items-center justify-center"
+        disabled={enrolling}
+        className={`w-full py-3 md:py-4 font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all flex items-center justify-center ${
+          enrolling
+            ? 'bg-gray-400 text-white cursor-not-allowed'
+            : 'bg-primary-600 hover:bg-primary-700 text-white shadow-xl shadow-primary-600/30 active:scale-[0.98]'
+        }`}
       >
-        Apply Now
+        {enrolling ? (
+          <>
+            <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin mr-2" />
+            Processing…
+          </>
+        ) : (
+          'Apply Now'
+        )}
       </button>
     );
   };

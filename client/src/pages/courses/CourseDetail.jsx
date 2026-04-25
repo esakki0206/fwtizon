@@ -31,6 +31,7 @@ const CourseDetail = () => {
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [expandedModules, setExpandedModules] = useState({});
 
   useEffect(() => {
@@ -48,18 +49,18 @@ const CourseDetail = () => {
     fetchCourse();
   }, [id]);
 
-  // Check if user is already enrolled
+  // Check if user is already enrolled (lightweight single-course check)
   useEffect(() => {
     if (!user || !course) return;
     const checkEnrollment = async () => {
       try {
-        const res = await axios.get('/api/enroll/my-courses');
-        const enrolled = (res.data.data || []).some(
-          (e) => e.course?._id === course._id || e.course?.slug === course.slug
-        );
-        setIsEnrolled(enrolled);
+        setEnrollmentLoading(true);
+        const res = await axios.get(`/api/enroll/status?courseId=${course._id}`);
+        setIsEnrolled(res.data?.enrolled === true);
       } catch {
         // Non-fatal
+      } finally {
+        setEnrollmentLoading(false);
       }
     };
     checkEnrollment();
@@ -128,14 +129,17 @@ const CourseDetail = () => {
             if (verifyRes.data.success) {
               toast.success('🎉 Enrolled successfully!');
               setIsEnrolled(true);
+              setEnrolling(false);
               // Navigate to the learning page
               setTimeout(() => navigate(`/learn/${course.slug || course._id}`), 1200);
             } else {
               toast.error('Payment verification failed. Contact support.');
+              setEnrolling(false);
             }
           } catch (err) {
             console.error('Verify payment error:', err);
             toast.error(err.response?.data?.message || 'Payment verification failed. Contact support.');
+            setEnrolling(false);
           }
         },
         // ── Dismiss / failure handler ──
@@ -425,7 +429,16 @@ const CourseDetail = () => {
                   One-time payment
                 </div>
 
-                {isEnrolled ? (
+                {enrollmentLoading ? (
+                  <Button
+                    disabled
+                    size="lg"
+                    className="w-full h-12 rounded-xl font-bold text-sm mb-4 bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-wait"
+                  >
+                    <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin mr-2" />
+                    Checking status…
+                  </Button>
+                ) : isEnrolled ? (
                   <Button
                     asChild
                     size="lg"

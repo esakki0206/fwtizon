@@ -58,6 +58,14 @@ const enrollmentSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+// Ensure every enrollment references at least one course type — never allow both null
+enrollmentSchema.pre('validate', function (next) {
+  if (!this.course && !this.liveCourse) {
+    return next(new Error('Enrollment must reference either a course or a liveCourse'));
+  }
+  next();
+});
+
 // Prevent duplicate enrollments but allow sparse logic
 enrollmentSchema.index({ user: 1, course: 1 }, { unique: true, sparse: true });
 enrollmentSchema.index({ user: 1, liveCourse: 1 }, { unique: true, sparse: true });

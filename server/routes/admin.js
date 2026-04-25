@@ -1661,6 +1661,182 @@ router.get('/live-courses/:id/applications', protect, authorize('admin'), async 
   }
 });
 
+/**
+ * @desc    Export applications for a live course as .xlsx
+ * @route   GET /api/admin/live-courses/:id/applications/export
+ * @access  Private/Admin
+ */
+router.get('/live-courses/:id/applications/export', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
+    // Fetch the live course for metadata
+    const liveCourse = await LiveCourse.findById(id).lean();
+    if (!liveCourse) {
+      return res.status(404).json({ success: false, message: 'Live course not found' });
+    }
+
+    // Fetch all applications for this cohort
+    const applications = await CohortApplication.find({ liveCourse: id })
+      .populate('user', 'name email')
+      .sort('-createdAt')
+      .lean();
+
+    // Fetch enrollments to get payment IDs per applicant email
+    const enrollments = await Enrollment.find({ liveCourse: id }).lean();
+    const enrollmentMap = new Map();
+    for (const en of enrollments) {
+      enrollmentMap.set(en.email || '', en.paymentId || '');
+    }
+
+    // Dynamically import exceljs (ESM-compatible)
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Fwtizon Academy Admin';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Applications', {
+      pageSetup: { paperSize: 9, orientation: 'landscape' },
+    });
+
+    // ── Column definitions ─────────────────────────────────────────────────
+    sheet.columns = [
+      { header: '#',                key: 'index',          width: 5  },
+      { header: 'Applicant Name',   key: 'fullName',       width: 28 },
+      { header: 'Email',            key: 'email',          width: 32 },
+      { header: 'Mobile Number',    key: 'mobileNumber',   width: 18 },
+      { header: 'WhatsApp Number',  key: 'whatsappNumber', width: 18 },
+      { header: 'Gender',           key: 'gender',         width: 16 },
+      { header: 'Department',       key: 'courseDepartment', width: 22 },
+      { header: 'Experience Level', key: 'experienceLevel', width: 18 },
+      { header: 'Course Name',      key: 'courseName',     width: 36 },
+      { header: 'Instructor',       key: 'instructorName', width: 24 },
+      { header: 'Payment Status',   key: 'paymentStatus',  width: 16 },
+      { header: 'Application Status', key: 'status',       width: 18 },
+      { header: 'Payment ID',       key: 'paymentId',      width: 28 },
+      { header: 'Applied Date',     key: 'appliedDate',    width: 22 },
+      { header: 'Applied Time',     key: 'appliedTime',    width: 16 },
+    ];
+
+    // ── Style the header row ───────────────────────────────────────────────
+    const headerRow = sheet.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top:    { style: 'thin', color: { argb: 'FF4338CA' } },
+        left:   { style: 'thin', color: { argb: 'FF4338CA' } },
+        bottom: { style: 'thin', color: { argb: 'FF4338CA' } },
+        right:  { style: 'thin', color: { argb: 'FF4338CA' } },
+      };
+    });
+    headerRow.height = 30;
+
+    // ── Populate data rows ─────────────────────────────────────────────────
+    const instructorName =
+      (liveCourse.instructorName && liveCourse.instructorName.trim()) ||
+      'N/A';
+
+    applications.forEach((app, i) => {
+      const appliedDate = app.createdAt ? new Date(app.createdAt) : null;
+      const paymentId   = enrollmentMap.get(app.email || '') || 'N/A';
+      const isPaid      = paymentId !== 'N/A';
+
+      const row = sheet.addRow({
+        index:           i + 1,
+        fullName:        app.fullName || 'N/A',
+        email:           app.email || 'N/A',
+        mobileNumber:    app.mobileNumber || 'N/A',
+        whatsappNumber:  app.whatsappNumber || 'N/A',
+        gender:          app.gender || 'N/A',
+        courseDepartment: app.courseDepartment || 'N/A',
+        experienceLevel: app.experienceLevel || 'N/A',
+        courseName:      liveCourse.title || 'N/A',
+        instructorName,
+        paymentStatus:   isPaid ? 'Paid' : 'Pending',
+        status:          app.status || 'Applied',
+        paymentId,
+        appliedDate:     appliedDate
+          ? appliedDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : 'N/A',
+        appliedTime:     appliedDate
+          ? appliedDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+          : 'N/A',
+      });
+
+      // Alternating row background
+      const bgColor = i % 2 === 0 ? 'FFFAFAFA' : 'FFFFFFFF';
+      row.eachCell((cell) => {
+        cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        cell.border = {
+          top:    { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          left:   { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          right:  { style: 'hair', color: { argb: 'FFE5E7EB' } },
+        };
+      });
+
+      // Color-code payment status cell
+      const payCell = row.getCell('paymentStatus');
+      payCell.font = { bold: true, color: { argb: isPaid ? 'FF059669' : 'FFD97706' } };
+
+      // Color-code application status cell
+      const statusCell = row.getCell('status');
+      const isEnrolled = app.status === 'Enrolled';
+      statusCell.font = { bold: true, color: { argb: isEnrolled ? 'FF059669' : 'FF6B7280' } };
+
+      row.height = 22;
+    });
+
+    // ── Summary row at the bottom ──────────────────────────────────────────
+    sheet.addRow([]);
+    const summaryRow = sheet.addRow([
+      '', 'Total Applications:', applications.length,
+      '', 'Paid:', enrollments.length,
+    ]);
+    summaryRow.eachCell((cell) => {
+      if (cell.value !== '') {
+        cell.font = { bold: true, size: 10, color: { argb: 'FF374151' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+      }
+    });
+
+    // ── Auto-filter on header row ──────────────────────────────────────────
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to:   { row: 1, column: sheet.columns.length },
+    };
+
+    // Freeze the header row
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // ── Stream the workbook to the response ───────────────────────────────
+    const safeName = (liveCourse.title || 'cohort').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+    const filename  = `applications_${safeName}_${Date.now()}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Excel export error:', error);
+    // Only send JSON error if headers not already sent
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to export applications' });
+    }
+  }
+});
+
 // ==============================
 // ADMIN COURSE MANAGEMENT
 // All statuses returned (draft + published) — admin sees everything.

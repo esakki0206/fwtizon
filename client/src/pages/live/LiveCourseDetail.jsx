@@ -1,12 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { AnimatePresence } from 'framer-motion';
-import { FiVideo, FiCalendar, FiUsers, FiClock, FiCheckCircle, FiChevronDown, FiBookOpen, FiStar, FiFileText } from 'react-icons/fi';
+import {
+  FiVideo, FiCalendar, FiUsers, FiClock, FiCheckCircle,
+  FiChevronDown, FiBookOpen, FiStar, FiFileText,
+} from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { formatLiveCourseDate, formatTimeValue, getLiveCourseTimingText } from '../../lib/liveCourseTiming';
+import { addToGoogleCalendar } from '../../lib/googleCalendar';
+
+// ── Small Google Calendar Icon ─────────────────────────────────────────────
+const CalendarIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+  </svg>
+);
 
 const LiveCourseDetail = () => {
   const { courseId } = useParams();
@@ -16,6 +27,11 @@ const LiveCourseDetail = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // ── Enrollment state (verified from backend, not local user object) ────────
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
+
+  // ── Application modal state ────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     fullName: user?.name || '',
@@ -28,6 +44,11 @@ const LiveCourseDetail = () => {
     message: ''
   });
 
+  // ── After-enrollment overlay ───────────────────────────────────────────────
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [calendarAdded, setCalendarAdded] = useState(false);
+
+  // ── Fetch course ───────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchCourse = async () => {
       try {
@@ -47,9 +68,36 @@ const LiveCourseDetail = () => {
     fetchCourse();
   }, [courseId]);
 
+  // ── Verify enrollment status from backend (not from stale user object) ─────
+  const checkEnrollmentStatus = useCallback(async () => {
+    if (!user || !courseId) return;
+    try {
+      setEnrollmentLoading(true);
+      const res = await axios.get('/api/enroll/my-courses');
+      const enrollments = res.data?.data || [];
+      const alreadyEnrolled = enrollments.some(
+        (e) =>
+          e.liveCourse &&
+          (e.liveCourse._id === courseId ||
+            e.liveCourse._id?.toString() === courseId ||
+            e.liveCourse === courseId)
+      );
+      setIsEnrolled(alreadyEnrolled);
+    } catch (_err) {
+      // Silently ignore — don't break the page if enrollment check fails
+    } finally {
+      setEnrollmentLoading(false);
+    }
+  }, [user, courseId]);
+
+  useEffect(() => {
+    checkEnrollmentStatus();
+  }, [checkEnrollmentStatus]);
+
+  // ── Loading / Not found guards ─────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center space-x-3">
-      <div className="w-6 h-6 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+      <div className="w-6 h-6 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       <p className="text-gray-500 font-medium">Loading course details...</p>
     </div>
   );
@@ -59,15 +107,18 @@ const LiveCourseDetail = () => {
       <FiVideo size={64} className="text-gray-300 dark:text-gray-700 mb-4" />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Live Course Not Found</h2>
       <p className="text-gray-500 mb-6">The course you are looking for does not exist or has been removed.</p>
-      <Link to="/live-courses" className="px-6 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition">
+      <Link
+        to="/live-courses"
+        className="px-6 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition"
+      >
         Browse Available Courses
       </Link>
     </div>
   );
 
   const isFull = course.currentEnrollments >= course.maxStudents;
-  const isEnrolledLocally = user?.enrollments?.includes(course._id) || false;
 
+  // ── Razorpay script loader ─────────────────────────────────────────────────
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
       if (window.Razorpay) return resolve(true);
@@ -79,27 +130,54 @@ const LiveCourseDetail = () => {
     });
   };
 
+  // ── Open enrollment modal ──────────────────────────────────────────────────
   const handleEnrollButton = () => {
     if (!user) {
       toast.error('Please log in to apply for this course.');
       navigate('/login');
       return;
     }
+    if (isEnrolled) return; // Guard: already enrolled — button should not be clickable
     setFormData(prev => ({ ...prev, fullName: user.name || '', email: user.email || '' }));
     setIsModalOpen(true);
   };
 
+  // ── Google Calendar handler ────────────────────────────────────────────────
+  const handleAddToCalendar = () => {
+    addToGoogleCalendar(course);
+    setCalendarAdded(true);
+    toast.success('Opening Google Calendar — save the event and you will get reminders!', {
+      duration: 4000,
+    });
+  };
+
+  // ── Process Payment & Enroll ───────────────────────────────────────────────
   const processPayment = async (e) => {
     e.preventDefault();
+
     if (!formData.fullName || !formData.email || !formData.phone || !formData.whatsappNumber) {
-      return toast.error("Please fill all required fields (Name, Email, Mobile, WhatsApp)");
+      return toast.error('Please fill all required fields (Name, Email, Mobile, WhatsApp)');
     }
     setIsModalOpen(false);
 
     const toastId = toast.loading('Initializing secure checkout...');
 
     try {
-      const { data: orderData } = await axios.post('/api/enroll/create-order', { liveCourseId: course._id });
+      // Double-check server-side enrollment before creating order
+      const checkRes = await axios.get('/api/enroll/my-courses');
+      const enrolled = (checkRes.data?.data || []).some(
+        (e) => e.liveCourse && (e.liveCourse._id === course._id || e.liveCourse === course._id)
+      );
+      if (enrolled) {
+        toast.dismiss(toastId);
+        setIsEnrolled(true);
+        toast.success('You are already enrolled in this course!');
+        return;
+      }
+
+      const { data: orderData } = await axios.post('/api/enroll/create-order', {
+        liveCourseId: course._id,
+      });
 
       const isMockOrder = orderData.data.id?.startsWith('order_mock_');
       if (isMockOrder) {
@@ -108,10 +186,13 @@ const LiveCourseDetail = () => {
           razorpay_payment_id: `mock_pay_${Date.now()}`,
           razorpay_signature: 'mock_signature',
           liveCourseId: course._id,
-          ...formData
+          ...formData,
         });
-        toast.success('Enrolled successfully! Redirecting...', { id: toastId });
-        navigate('/dashboard');
+        toast.success('Enrolled successfully!', { id: toastId });
+        setIsEnrolled(true);
+        setShowSuccessBanner(true);
+        // Re-sync enrollment count
+        setCourse(prev => prev ? ({ ...prev, currentEnrollments: (prev.currentEnrollments || 0) + 1 }) : prev);
         return;
       }
 
@@ -139,20 +220,33 @@ const LiveCourseDetail = () => {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
               liveCourseId: course._id,
-              ...formData
+              ...formData,
             });
-            toast.success('Enrolled successfully! Redirecting...', { id: verifyingToast });
-            navigate('/dashboard');
+            toast.success('Enrolled successfully!', { id: verifyingToast });
+            // ── Mark enrolled immediately — no page navigation ──
+            setIsEnrolled(true);
+            setShowSuccessBanner(true);
+            setCourse(prev =>
+              prev ? ({ ...prev, currentEnrollments: (prev.currentEnrollments || 0) + 1 }) : prev
+            );
           } catch (err) {
-            toast.error(err.response?.data?.message || 'Payment verification failed', { id: verifyingToast });
+            toast.error(
+              err.response?.data?.message || 'Payment verification failed',
+              { id: verifyingToast }
+            );
           }
         },
         prefill: {
-          name: formData.fullName || user.name || '',
-          email: formData.email || user.email || '',
+          name: formData.fullName || user?.name || '',
+          email: formData.email || user?.email || '',
           contact: formData.phone || '',
         },
-        theme: { color: '#4f46e5' }
+        theme: { color: '#4f46e5' },
+        modal: {
+          ondismiss: () => {
+            // User closed checkout — silently ignore
+          },
+        },
       };
 
       const rp = new window.Razorpay(options);
@@ -162,12 +256,117 @@ const LiveCourseDetail = () => {
     }
   };
 
+  // ── Derive enroll button state ─────────────────────────────────────────────
+  const renderEnrollButton = () => {
+    if (enrollmentLoading) {
+      return (
+        <button
+          disabled
+          className="w-full py-3 md:py-4 bg-gray-100 dark:bg-gray-800 text-gray-400 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-wait flex items-center justify-center"
+        >
+          <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin mr-2" />
+          Checking status...
+        </button>
+      );
+    }
+
+    if (isEnrolled) {
+      return (
+        <div className="space-y-2">
+          <button
+            disabled
+            className="w-full py-3 md:py-4 bg-green-500 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl flex items-center justify-center opacity-90 cursor-default"
+          >
+            <FiCheckCircle className="mr-2" size={16} /> Applied &amp; Enrolled
+          </button>
+          <button
+            onClick={handleAddToCalendar}
+            className={`w-full py-2.5 border-2 font-semibold text-sm rounded-lg md:rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+              calendarAdded
+                ? 'border-green-400 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10'
+                : 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20'
+            }`}
+          >
+            <CalendarIcon />
+            {calendarAdded ? 'Google Calendar Opened ✓' : 'Add Class to Google Calendar'}
+          </button>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full py-2 text-sm text-gray-500 dark:text-gray-400 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition"
+          >
+            Go to Dashboard →
+          </button>
+        </div>
+      );
+    }
+
+    if (isFull) {
+      return (
+        <button
+          disabled
+          className="w-full py-3 md:py-4 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center"
+        >
+          Cohort Full
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={handleEnrollButton}
+        className="w-full py-3 md:py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-xl shadow-primary-600/30 active:scale-[0.98] flex items-center justify-center"
+      >
+        Apply Now
+      </button>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-20 pt-20">
+      {/* ── Success Banner (shown immediately after enrollment) ──────────── */}
+      <AnimatePresence>
+        {showSuccessBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -60 }}
+            className="fixed top-16 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none"
+          >
+            <div className="pointer-events-auto w-full max-w-xl bg-green-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                  <FiCheckCircle size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm">You are now enrolled!</p>
+                  <p className="text-xs text-green-100 truncate">
+                    Welcome to <span className="font-semibold">{course.title}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={handleAddToCalendar}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white text-green-700 rounded-lg text-xs font-bold hover:bg-green-50 transition whitespace-nowrap"
+                >
+                  <CalendarIcon /> Add to Calendar
+                </button>
+                <button
+                  onClick={() => setShowSuccessBanner(false)}
+                  className="px-3 py-2 bg-green-700/60 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 relative items-start">
 
-          {/* LEFT SECTION - MAIN CONTENT */}
+          {/* ── LEFT SECTION — MAIN CONTENT ──────────────────────────────── */}
           <div className="xl:col-span-2 space-y-8">
 
             {/* Header / Intro */}
@@ -184,7 +383,8 @@ const LiveCourseDetail = () => {
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                  <FiCalendar className="mr-1.5" size={12} /> {formatLiveCourseDate(course, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  <FiCalendar className="mr-1.5" size={12} />
+                  {formatLiveCourseDate(course, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </span>
                 {getLiveCourseTimingText(course) ? (
                   <span className="inline-flex items-center rounded-full bg-primary-50 dark:bg-primary-900/20 px-3 py-1 text-xs font-semibold text-primary-700 dark:text-primary-300">
@@ -196,7 +396,11 @@ const LiveCourseDetail = () => {
               {/* Instructor Mini Profile */}
               <div className="flex items-start mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-800/80">
                 <img
-                  src={course.instructorImage || course.instructor?.avatar || `https://ui-avatars.com/api/?name=${course.instructorName || course.instructor?.name || 'Instructor'}&background=4f46e5&color=fff`}
+                  src={
+                    course.instructorImage ||
+                    course.instructor?.avatar ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(course.instructorName || course.instructor?.name || 'Instructor')}&background=4f46e5&color=fff`
+                  }
                   alt={course.instructorName || course.instructor?.name || 'Instructor'}
                   className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white dark:border-gray-800 shadow-md object-cover mt-1"
                 />
@@ -205,7 +409,7 @@ const LiveCourseDetail = () => {
                   <span className="text-base md:text-lg font-bold text-gray-900 dark:text-white">
                     {course.instructorName || course.instructor?.name || 'Expert Instructor'}
                   </span>
-                  {(course.instructorDesignation) && (
+                  {course.instructorDesignation && (
                     <span className="text-sm text-primary-600 dark:text-primary-400 font-medium mb-1">
                       {course.instructorDesignation}
                     </span>
@@ -219,10 +423,14 @@ const LiveCourseDetail = () => {
               </div>
             </div>
 
-            {/* Thumbnail Box */}
+            {/* Thumbnail */}
             <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-xl bg-gray-900 aspect-video w-full relative group">
               {course.thumbnail ? (
-                <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                <img
+                  src={course.thumbnail}
+                  alt={course.title}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
               ) : (
                 <div className="w-full h-full bg-linear-to-br from-gray-800 to-gray-900 flex flex-col items-center justify-center text-gray-600">
                   <FiVideo size={64} className="mb-4 opacity-50" />
@@ -231,10 +439,9 @@ const LiveCourseDetail = () => {
               )}
             </div>
 
-            {/* Content Sections Wrapper */}
+            {/* Content Sections */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
 
-              {/* Learning Objectives */}
               {course.learningObjectives && course.learningObjectives.length > 0 && (
                 <div className="p-4 md:p-6 lg:p-8 border-b border-gray-100 dark:border-gray-800">
                   <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-4 md:mb-6 flex items-center">
@@ -251,7 +458,6 @@ const LiveCourseDetail = () => {
                 </div>
               )}
 
-              {/* Course Curriculum */}
               {course.curriculum && course.curriculum.length > 0 && (
                 <div className="p-4 md:p-6 lg:p-8 border-b border-gray-100 dark:border-gray-800">
                   <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-4 md:mb-6 flex items-center">
@@ -261,7 +467,9 @@ const LiveCourseDetail = () => {
                     {course.curriculum.map((mod, idx) => (
                       <div key={idx} className="bg-gray-50 dark:bg-gray-800/50 rounded-lg md:rounded-xl p-3 md:p-4 lg:p-5 border border-gray-100 dark:border-gray-800">
                         <h3 className="font-bold text-sm md:text-base text-gray-900 dark:text-white mb-1.5 md:mb-2 flex items-center">
-                          <span className="text-xs font-black text-primary-600 dark:text-primary-400 mr-2 md:mr-3">MOD {idx + 1}</span>
+                          <span className="text-xs font-black text-primary-600 dark:text-primary-400 mr-2 md:mr-3">
+                            MOD {idx + 1}
+                          </span>
                           {mod.title}
                         </h3>
                         <p className="text-gray-600 dark:text-gray-400 text-xs md:text-sm ml-8 md:ml-12">
@@ -273,7 +481,6 @@ const LiveCourseDetail = () => {
                 </div>
               )}
 
-              {/* Schedule */}
               {course.schedule && course.schedule.length > 0 && (
                 <div className="p-4 md:p-6 lg:p-8 border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
                   <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-4 md:mb-6 flex items-center">
@@ -291,9 +498,16 @@ const LiveCourseDetail = () => {
                       <tbody>
                         {course.schedule.map((slot, idx) => (
                           <tr key={idx} className="border-b border-gray-100 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition">
-                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-semibold text-gray-900 dark:text-white">{slot.day}</td>
-                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400 flex items-center"><FiClock className="mr-1 md:mr-2 opacity-60" size={14} />{formatTimeValue(slot.time) || slot.time}</td>
-                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400">{slot.topic}</td>
+                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm font-semibold text-gray-900 dark:text-white">
+                              {slot.day}
+                            </td>
+                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400 flex items-center">
+                              <FiClock className="mr-1 md:mr-2 opacity-60" size={14} />
+                              {formatTimeValue(slot.time) || slot.time}
+                            </td>
+                            <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 dark:text-gray-400">
+                              {slot.topic}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -302,11 +516,10 @@ const LiveCourseDetail = () => {
                 </div>
               )}
 
-              {/* Requirements & FAQs */}
               <div className="p-4 md:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                 {course.requirements && course.requirements.length > 0 && (
                   <div>
-                    <h3 className="text-lg md:text-lg font-bold text-gray-900 dark:text-white mb-3 md:mb-4">Requirements</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 md:mb-4">Requirements</h3>
                     <ul className="space-y-2 md:space-y-3">
                       {course.requirements.map((req, idx) => (
                         <li key={idx} className="flex items-start text-xs md:text-sm text-gray-600 dark:text-gray-400">
@@ -320,16 +533,23 @@ const LiveCourseDetail = () => {
 
                 {course.faqs && course.faqs.length > 0 && (
                   <div>
-                    <h3 className="text-lg md:text-lg font-bold text-gray-900 dark:text-white mb-3 md:mb-4">FAQ</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 md:mb-4">FAQ</h3>
                     <div className="space-y-2 md:space-y-3">
                       {course.faqs.map((faq, idx) => (
-                        <div key={idx} className="border border-gray-200 dark:border-gray-800 rounded-lg md:rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800/20">
+                        <div
+                          key={idx}
+                          className="border border-gray-200 dark:border-gray-800 rounded-lg md:rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800/20"
+                        >
                           <button
                             onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
                             className="w-full text-left px-3 md:px-4 py-2.5 md:py-3 flex justify-between items-center text-xs md:text-sm font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800/40 transition"
                           >
                             {faq.question}
-                            <FiChevronDown className={`transform transition-transform shrink-0 ml-2`} size={16} style={{ transform: activeFaq === idx ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                            <FiChevronDown
+                              className="transform transition-transform shrink-0 ml-2"
+                              size={16}
+                              style={{ transform: activeFaq === idx ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                            />
                           </button>
                           <AnimatePresence>
                             {activeFaq === idx && (
@@ -355,52 +575,58 @@ const LiveCourseDetail = () => {
 
           </div>
 
-          {/* RIGHT SECTION - STICKY CARD */}
+          {/* ── RIGHT SECTION — STICKY ENROLLMENT CARD ──────────────────── */}
           <div className="xl:col-span-1">
             <div className="sticky top-20 md:top-28 bg-white dark:bg-gray-900 rounded-xl md:rounded-2xl shadow-lg md:shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col order-first xl:order-last">
 
-              {/* Card Header pricing */}
+              {/* Pricing Header */}
               <div className="bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 border-b border-gray-100 dark:border-gray-800">
-                <span className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 md:mb-2">Registration Fee</span>
+                <span className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 md:mb-2">
+                  Registration Fee
+                </span>
                 <div className="flex items-baseline mb-1.5 md:mb-2">
-                  <span className="text-3xl sm:text-4xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight">₹{course.price}</span>
+                  <span className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
+                    ₹{course.price}
+                  </span>
                 </div>
                 <div className="text-xs md:text-sm font-medium text-green-600 dark:text-green-400 flex items-center">
                   <FiClock className="mr-1" size={14} /> Enrolling now
                 </div>
               </div>
 
-              {/* Card Body Metrics */}
+              {/* Card Body */}
               <div className="p-4 md:p-6 space-y-3 md:space-y-5">
                 <div className="grid grid-cols-2 gap-3 md:gap-4">
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Start Date</span>
-                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
+                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white">
                       {formatLiveCourseDate(course, 'en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Class Timing</span>
-                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
+                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white">
                       {getLiveCourseTimingText(course) || 'To be announced'}
                     </span>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Total Seats</span>
-                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
+                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white">
                       {course.maxStudents}
                     </span>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Duration</span>
-                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white flex items-center">
+                    <span className="text-sm md:text-base font-bold text-gray-900 dark:text-white">
                       {course.duration || 'N/A'}
                     </span>
                   </div>
                   <div className="col-span-2">
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Availability</span>
-                    <span className={`text-sm md:text-base font-bold flex items-center ${isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'}`}>
-                      {course.maxStudents - course.currentEnrollments} left
+                    <span className={`text-sm md:text-base font-bold flex items-center ${
+                      isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'
+                    }`}>
+                      {isFull ? 'No seats left' : `${course.maxStudents - course.currentEnrollments} left`}
                     </span>
                   </div>
                 </div>
@@ -418,34 +644,20 @@ const LiveCourseDetail = () => {
                   </div>
                   <div className="flex items-start text-xs md:text-sm">
                     <FiFileText className="mt-0.5 mr-2 md:mr-3 text-gray-400 shrink-0" size={14} />
-                    <span className="text-gray-700 dark:text-gray-300">Hands-on Assignments & Projects</span>
+                    <span className="text-gray-700 dark:text-gray-300">Hands-on Assignments &amp; Projects</span>
                   </div>
                 </div>
 
                 <div className="pt-2 md:pt-3">
-                  {isEnrolledLocally ? (
-                    <button
-                      onClick={() => navigate('/dashboard')}
-                      className="w-full py-3 md:py-4 bg-green-500 hover:bg-green-600 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-md shadow-green-500/20 active:scale-[0.98] flex items-center justify-center"
-                    >
-                      <FiCheckCircle className="mr-2" size={16} /> Resume Outline
-                    </button>
-                  ) : isFull ? (
-                    <button disabled className="w-full py-3 md:py-4 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center">
-                      Cohort Full
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleEnrollButton}
-                      className="w-full py-3 md:py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all shadow-xl shadow-primary-600/30 active:scale-[0.98] flex items-center justify-center"
-                    >
-                      Apply Now
-                    </button>
+                  {renderEnrollButton()}
+                  {!isEnrolled && (
+                    <p className="text-center text-xs text-gray-500 mt-2 md:mt-3 flex items-center justify-center gap-1">
+                      <svg className="w-3 h-3 opacity-70" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                      Secure Checkout
+                    </p>
                   )}
-                  <p className="text-center text-xs text-gray-500 mt-2 md:mt-3 flex items-center justify-center gap-1">
-                    <svg className="w-3 h-3 opacity-70" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                    Secure Checkout
-                  </p>
                 </div>
               </div>
             </div>
@@ -454,106 +666,103 @@ const LiveCourseDetail = () => {
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-           Enrollment Modal
-         z-[9999] ensures it renders above the bottom nav bar
-       (which typically uses z-50) on all devices.
-      ───────────────────────────────────────────────────────────── */}
+      {/* ── Enrollment Modal ──────────────────────────────────────────────────
+           z-[9999] ensures it renders above the bottom nav bar on all devices.
+       ─────────────────────────────────────────────────────────────────────── */}
       <AnimatePresence>
-      {isModalOpen && course && (
-      <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-950/75 backdrop-blur-sm"
-      style={{ padding: 'max(12px, env(safe-area-inset-top, 12px)) 12px max(12px, env(safe-area-inset-bottom, 12px)) 12px' }}
-      >
-      <motion.div
-      initial={{ opacity: 0, scale: 0.94, y: 16 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.94, y: 16 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className="relative bg-white dark:bg-gray-900 w-full max-w-lg rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden"
-      style={{ maxHeight: 'min(88vh, 680px)' }}
-      >
-
-      {/* ── Header ─────────────────────────────────────── */}
+        {isModalOpen && course && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-950/75 backdrop-blur-sm"
+            style={{ padding: 'max(12px, env(safe-area-inset-top, 12px)) 12px max(12px, env(safe-area-inset-bottom, 12px)) 12px' }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              className="relative bg-white dark:bg-gray-900 w-full max-w-lg rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden"
+              style={{ maxHeight: 'min(88vh, 680px)' }}
+            >
+              {/* Header */}
               <div className="flex-shrink-0 flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
-        <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-snug">Enrollment Application</h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">Checkout for <span className="font-semibold text-gray-700 dark:text-gray-200">{course.title}</span></p>
-      </div>
-      {/* ✕ close button */}
-      <button
-      type="button"
-      onClick={() => setIsModalOpen(false)}
-      aria-label="Close"
-      className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-      >
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-      </svg>
-      </button>
-      </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-snug">
+                    Enrollment Application
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                    Checkout for{' '}
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">{course.title}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  aria-label="Close"
+                  className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
 
-      {/* ── Scrollable Form Body ────────────────────────── */}
-      <div className="flex-1 overflow-y-auto overscroll-contain">
-      <form id="enrollment-form" onSubmit={processPayment} className="px-5 sm:px-6 py-4 space-y-3">
-
-      {/* Name + Email side-by-side on sm+ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-        Full Name <span className="text-red-500">*</span>
-      </label>
-      <input
-      type="text" required
-      value={formData.fullName}
-        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-          placeholder="Your full name"
-            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
-                      />
-        </div>
-      <div>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-        Email <span className="text-red-500">*</span>
-        </label>
-        <input
-        type="email" required
-        value={formData.email}
-      onChange={e => setFormData({ ...formData, email: e.target.value })}
-      placeholder="you@example.com"
-      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
-      />
-      </div>
-      </div>
-
-      {/* Mobile + WhatsApp always side-by-side (2 cols) */}
-        <div className="grid grid-cols-2 gap-3">
-            <div>
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto overscroll-contain">
+                <form id="enrollment-form" onSubmit={processPayment} className="px-5 sm:px-6 py-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
                       <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-                Mobile <span className="text-red-500">*</span>
-              </label>
-            <input
-            type="tel" required
-            value={formData.phone}
-            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="10-digit"
-            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
-            />
-          </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-            WhatsApp <span className="text-red-500">*</span>
-            </label>
-          <input
-              type="tel" required
-                value={formData.whatsappNumber}
-                  onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })}
-                    placeholder="WhatsApp no."
-                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text" required
+                        value={formData.fullName}
+                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                        placeholder="Your full name"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email" required
+                        value={formData.email}
+                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="you@example.com"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
                       />
                     </div>
                   </div>
 
-                  {/* Gender — full width select */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                        Mobile <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel" required
+                        value={formData.phone}
+                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="10-digit"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                        WhatsApp <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel" required
+                        value={formData.whatsappNumber}
+                        onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })}
+                        placeholder="WhatsApp no."
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                       Gender <span className="text-red-500">*</span>
@@ -571,10 +780,12 @@ const LiveCourseDetail = () => {
                     </select>
                   </div>
 
-                  {/* Department + Experience side-by-side on sm+ */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                        Department{' '}
+                        <span className="text-gray-400 font-normal normal-case">(optional)</span>
+                      </label>
                       <input
                         type="text"
                         value={formData.courseDepartment}
@@ -584,7 +795,10 @@ const LiveCourseDetail = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Experience <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                        Experience{' '}
+                        <span className="text-gray-400 font-normal normal-case">(optional)</span>
+                      </label>
                       <select
                         value={formData.experienceLevel}
                         onChange={e => setFormData({ ...formData, experienceLevel: e.target.value })}
@@ -599,19 +813,16 @@ const LiveCourseDetail = () => {
                     </div>
                   </div>
 
-                  {/* Bottom spacer so last field isn't flush against footer */}
                   <div className="h-1" />
                 </form>
               </div>
 
-              {/* ── Sticky Footer — ALWAYS VISIBLE ─────────────── */}
+              {/* Sticky Footer */}
               <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-                {/* Price badge */}
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Registration Fee</span>
                   <span className="text-base font-black text-gray-900 dark:text-white">₹{course.price}</span>
                 </div>
-                {/* Buttons — side-by-side, equal width */}
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -625,16 +836,16 @@ const LiveCourseDetail = () => {
                     form="enrollment-form"
                     className="flex-[2] py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-primary-600/30 active:scale-[0.98] transition"
                   >
-                    Apply &amp; Pay &#8377;{course.price}
+                    Apply &amp; Pay ₹{course.price}
                   </button>
                 </div>
-                {/* Trust badge */}
                 <p className="mt-2 text-center text-xs text-gray-400 flex items-center justify-center gap-1">
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
                   Secured by Razorpay
                 </p>
               </div>
-
             </motion.div>
           </div>
         )}

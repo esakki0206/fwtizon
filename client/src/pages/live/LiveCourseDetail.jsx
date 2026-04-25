@@ -159,6 +159,31 @@ const LiveCourseDetail = () => {
     const toastId = toast.loading('Initializing secure checkout...');
 
     try {
+      // ── Admin Bypass Logic ──
+      const adminEmail = import.meta.env.VITE_ADMIN_BYPASS_EMAIL;
+      if (adminEmail && user.email === adminEmail) {
+        toast.dismiss(toastId);
+        const bypassToastId = toast.loading('Processing admin enrollment...');
+        try {
+          const verifyRes = await axios.post('/api/enroll/verify-payment', {
+            liveCourseId: course._id,
+            ...formData
+          });
+          if (verifyRes.data.bypass) {
+            toast.success('Enrolled successfully (Admin Access)', { id: bypassToastId });
+            setIsEnrolled(true);
+            setShowSuccessBanner(true);
+            setCourse(prev => prev ? ({ ...prev, currentEnrollments: (prev.currentEnrollments || 0) + 1 }) : prev);
+          } else {
+            toast.error('Bypass failed', { id: bypassToastId });
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Bypass failed', { id: bypassToastId });
+        }
+        setEnrolling(false);
+        return;
+      }
+
       // Lightweight server-side enrollment check before creating order
       const checkRes = await axios.get(`/api/enroll/status?liveCourseId=${course._id}`);
       if (checkRes.data?.enrolled) {

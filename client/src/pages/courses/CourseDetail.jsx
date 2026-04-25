@@ -84,6 +84,24 @@ const CourseDetail = () => {
     try {
       setEnrolling(true);
 
+      // ── Admin Bypass Logic ──
+      const adminEmail = import.meta.env.VITE_ADMIN_BYPASS_EMAIL;
+      if (adminEmail && user.email === adminEmail) {
+        const verifyRes = await axios.post('/api/enroll/verify-payment', {
+          courseId: course._id,
+          email: user.email,
+          fullName: user.name || '',
+        });
+        
+        if (verifyRes.data.bypass) {
+          toast.success('Enrolled successfully (Admin Access)');
+          setIsEnrolled(true);
+          setEnrolling(false);
+          setTimeout(() => navigate(`/learn/${course.slug || course._id}`), 1200);
+          return;
+        }
+      }
+
       // 1. Load Razorpay SDK
       const sdkLoaded = await loadRazorpay();
       if (!sdkLoaded) {

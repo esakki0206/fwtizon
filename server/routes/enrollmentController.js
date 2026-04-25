@@ -141,10 +141,183 @@ export const createOrder = async (req, res) => {
   }
 };
 
+// ── Helper: Reusable Enrollment Logic ───────────────────────────────────────
+const enrollUserInCourse = async ({
+  user,
+  courseId,
+  liveCourseId,
+  fullName,
+  email,
+  phone,
+  message,
+  gender,
+  whatsappNumber,
+  courseDepartment,
+  experienceLevel,
+  paymentId,
+  orderId,
+  isAdminBypass = false
+}) => {
+  // 1. Prevent duplicate enrollments
+  const existQuery = { user: user.id, status: { $in: ['active', 'completed'] } };
+  if (liveCourseId) existQuery.liveCourse = liveCourseId;
+  if (courseId) existQuery.course = courseId;
+
+  const existingEnrollment = await Enrollment.findOne(existQuery);
+  if (existingEnrollment) {
+    return { success: true, alreadyEnrolled: true, message: 'Already enrolled', data: existingEnrollment };
+  }
+
+  // 2. Fetch Course
+  let enrolledItem;
+  const enrollData = {
+    user: user.id,
+    paymentId: paymentId || `mock_pay_${Date.now()}`,
+    status: 'active',
+    fullName: fullName || user.name || '',
+    email: email || user.email || '',
+    phone,
+    message,
+  };
+
+  if (liveCourseId) {
+    enrolledItem = await LiveCourse.findById(liveCourseId);
+    if (!enrolledItem) throw new Error('Live course not found');
+    if (enrolledItem.maxStudents && enrolledItem.currentEnrollments >= enrolledItem.maxStudents) {
+      throw new Error('This cohort is already full');
+    }
+    enrollData.liveCourse = liveCourseId;
+    enrollData.amount = isAdminBypass ? 0 : enrolledItem.price;
+  } else if (courseId) {
+    enrolledItem = await Course.findById(courseId);
+    if (!enrolledItem) throw new Error('Course not found');
+    enrollData.course = courseId;
+    enrollData.amount = isAdminBypass ? 0 : enrolledItem.price;
+  }
+
+  if (!enrolledItem) throw new Error('Enrollment failed — course data missing');
+
+  // 3. Payment Integrity Check (Amount Verification)
+  // ONLY for real payments, skipped for dummy keys and admin bypass
+  if (!isAdminBypass && !isDummyKey()) {
+    try {
+      const razorpay = getRazorpay();
+      const payment = await razorpay.payments.fetch(paymentId);
+      const expectedAmountPaise = Math.round(enrolledItem.price * 100);
+      
+      if (payment.amount !== expectedAmountPaise || payment.status !== 'captured' || payment.currency !== 'INR') {
+        console.warn(`[SECURITY] Payment mismatch. Expected: ${expectedAmountPaise}, Got: ${payment.amount}`);
+        throw new Error('Payment verification failed — invalid amount or status');
+      }
+    } catch (fetchErr) {
+      console.error('Failed to fetch Razorpay payment details:', fetchErr.message);
+      if (fetchErr.message === 'Payment verification failed — invalid amount or status') throw fetchErr;
+      throw new Error('Failed to verify payment integrity');
+    }
+  }
+
+  // 4. Update Course Enrollment Count
+  if (liveCourseId) {
+    enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
+    await enrolledItem.save();
+  } else if (courseId) {
+    enrolledItem.enrollmentCount = (enrolledItem.enrollmentCount || 0) + 1;
+    await enrolledItem.save();
+  }
+
+  // 5. Create Enrollment Record
+  let enrollment;
+  try {
+    enrollment = await Enrollment.create(enrollData);
+  } catch (createErr) {
+    if (createErr.code === 11000) {
+      const duplicateQuery = { user: user.id };
+      if (liveCourseId) duplicateQuery.liveCourse = liveCourseId;
+      else if (courseId) duplicateQuery.course = courseId;
+      const existingRecord = await Enrollment.findOne(duplicateQuery);
+      return { success: true, alreadyEnrolled: true, message: 'Already enrolled', data: existingRecord };
+    }
+    throw createErr;
+  }
+
+  // 6. Cohort Application for Live Course
+  if (liveCourseId && gender && whatsappNumber) {
+    try {
+      await CohortApplication.create({
+        user: user.id,
+        liveCourse: liveCourseId,
+        fullName: fullName || user.name,
+        email: email || user.email,
+        mobileNumber: phone,
+        whatsappNumber,
+        gender,
+        courseDepartment,
+        experienceLevel,
+        status: 'Enrolled'
+      });
+    } catch (appErr) {
+      console.error('Failed to create cohort application:', appErr);
+    }
+  }
+
+  // 7. Auto-generate Receipt
+  try {
+    const serialNumber = await Counter.getNextSequence('receipts');
+    const now = new Date();
+    const fiscalStartYear = (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    const fiscalYear = `${fiscalStartYear}-${String(fiscalStartYear + 1).slice(-2)}`;
+    const paddedSerial = String(serialNumber).padStart(4, '0');
+    const receiptId = `FWT-iZON-RECEIPT-${fiscalYear}-${paddedSerial}`;
+
+    const receiptData = {
+      receiptId,
+      serialNumber,
+      userName: fullName || user.name || 'Student',
+      userEmail: email || user.email,
+      courseName: enrolledItem.title,
+      amount: isAdminBypass ? 0 : enrolledItem.price,
+      paymentId: paymentId || `bypass_${Date.now()}`,
+      orderId: orderId || 'N/A',
+      date: now,
+      status: 'SUCCESS'
+    };
+
+    const pdfBuffer = await generateReceiptPDF(receiptData);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${receiptId}-${user.id}`, 'fwtion/receipts');
+
+    await Receipt.create({
+      receiptId,
+      user: user.id,
+      course: courseId || undefined,
+      liveCourse: liveCourseId || undefined,
+      enrollment: enrollment._id,
+      paymentId: receiptData.paymentId,
+      orderId: receiptData.orderId,
+      amount: receiptData.amount,
+      userName: receiptData.userName,
+      userEmail: receiptData.userEmail,
+      courseName: receiptData.courseName,
+      fileUrl,
+      status: 'SUCCESS'
+    });
+  } catch (receiptError) {
+    console.error('Failed to auto-generate receipt:', receiptError);
+  }
+
+  // 8. Notification
+  await Notification.create({
+    user: user.id,
+    type: 'payment',
+    message: `You have successfully enrolled in "${enrolledItem?.title || 'the course'}"!`,
+    link: courseId ? `/learn/${enrolledItem._id}` : '/dashboard',
+  });
+
+  return { success: true, message: 'Payment verified and enrolled successfully', data: enrollment };
+};
+
 // ── Verify Payment and Enroll ───────────────────────────────────────────────
 /**
- * @desc  Verify Razorpay HMAC signature then enroll the user.
- *        Enrollment amount is re-fetched from DB — not trusted from payload.
+ * @desc  Verify Razorpay HMAC signature then enroll the user. Supports Admin Bypass.
  * @route POST /api/enroll/verify-payment
  */
 export const verifyPayment = async (req, res) => {
@@ -159,30 +332,37 @@ export const verifyPayment = async (req, res) => {
       email,
       phone,
       message,
-      // Cohort application specific fields
       gender,
       whatsappNumber,
       courseDepartment,
       experienceLevel,
     } = req.body;
 
-    if (!req.user?.id) {
-      return res.status(401).json({ success: false, message: 'User authentication failed' });
+    if (!req.user?.id) return res.status(401).json({ success: false, message: 'User authentication failed' });
+    if (!courseId && !liveCourseId) return res.status(400).json({ success: false, message: 'Course ID missing' });
+    if (courseId && !isValidObjectId(courseId)) return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    if (liveCourseId && !isValidObjectId(liveCourseId)) return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
+
+    // ── Admin Bypass Logic ──
+    const targetEmail = email || req.user.email;
+    const bypassEmail = process.env.ADMIN_BYPASS_EMAIL;
+    const isAdminBypass = (bypassEmail && targetEmail === bypassEmail) || (req.user?.role === 'admin');
+
+    if (isAdminBypass) {
+      try {
+        const result = await enrollUserInCourse({
+          user: req.user, courseId, liveCourseId, fullName, email: targetEmail, phone, message,
+          gender, whatsappNumber, courseDepartment, experienceLevel,
+          paymentId: `bypass_pay_${Date.now()}`, orderId: `bypass_order_${Date.now()}`, isAdminBypass: true
+        });
+        return res.status(200).json({ ...result, bypass: true });
+      } catch (err) {
+        console.error('Admin Bypass Enrollment Error:', err);
+        return res.status(500).json({ success: false, message: err.message || 'Server error' });
+      }
     }
 
-    if (!courseId && !liveCourseId) {
-      return res.status(400).json({ success: false, message: 'Course ID missing' });
-    }
-
-    // Validate ObjectId format
-    if (courseId && !isValidObjectId(courseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
-    }
-    if (liveCourseId && !isValidObjectId(liveCourseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
-    }
-
-    // ── Signature verification ──
+    // ── Signature Verification ──
     let isAuthentic = false;
 
     if (isDummyKey()) {
@@ -198,208 +378,36 @@ export const verifyPayment = async (req, res) => {
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
         .digest('hex');
 
-      // Timing-safe comparison to prevent timing attacks
       try {
-        isAuthentic = crypto.timingSafeEqual(
-          Buffer.from(expectedSignature, 'hex'),
-          Buffer.from(razorpay_signature, 'hex')
-        );
-      } catch (_bufferErr) {
-        // Buffer length mismatch = definitely not authentic
+        isAuthentic = crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(razorpay_signature, 'hex'));
+      } catch (_err) {
         isAuthentic = false;
       }
     }
 
     if (!isAuthentic) {
       console.warn(`[SECURITY] Invalid payment signature for user ${req.user.id}, order ${razorpay_order_id}`);
-      return res.status(400).json({
-        success: false,
-        message: 'Payment verification failed — invalid signature',
-      });
+      return res.status(400).json({ success: false, message: 'Payment verification failed — invalid signature' });
     }
 
-    // ── Prevent duplicate enrollments ──
-    const existQuery = { user: req.user.id, status: { $in: ['active', 'completed'] } };
-    if (liveCourseId) existQuery.liveCourse = liveCourseId;
-    if (courseId) existQuery.course = courseId;
-
-    const existingEnrollment = await Enrollment.findOne(existQuery);
-    if (existingEnrollment) {
-      return res.status(200).json({ success: true, message: 'Already enrolled', data: existingEnrollment });
-    }
-
-    let enrolledItem;
-    const enrollData = {
-      user: req.user.id,
-      paymentId: razorpay_payment_id || `mock_pay_${Date.now()}`,
-      status: 'active',
-      fullName,
-      email,
-      phone,
-      message,
-    };
-
-    if (liveCourseId) {
-      enrolledItem = await LiveCourse.findById(liveCourseId);
-      if (!enrolledItem) {
-        return res.status(404).json({ success: false, message: 'Live course not found' });
-      }
-      if (enrolledItem.maxStudents && enrolledItem.currentEnrollments >= enrolledItem.maxStudents) {
-        return res.status(400).json({ success: false, message: 'This cohort is already full' });
-      }
-      enrollData.liveCourse = liveCourseId;
-      // Amount comes from DB — never from the request body
-      enrollData.amount = enrolledItem.price;
-    } else if (courseId) {
-      enrolledItem = await Course.findById(courseId);
-      if (!enrolledItem) {
-        return res.status(404).json({ success: false, message: 'Course not found' });
-      }
-      enrollData.course = courseId;
-      // Amount comes from DB — never from the request body
-      enrollData.amount = enrolledItem.price;
-    }
-
-    if (!enrolledItem) {
-      return res.status(500).json({ success: false, message: 'Enrollment failed — course data missing' });
-    }
-
-    // ── Payment Integrity Check (Amount Verification) ──
-    if (!isDummyKey()) {
-      try {
-        const razorpay = getRazorpay();
-        const payment = await razorpay.payments.fetch(razorpay_payment_id);
-        const expectedAmountPaise = Math.round(enrolledItem.price * 100);
-        
-        if (payment.amount !== expectedAmountPaise || payment.status !== 'captured' || payment.currency !== 'INR') {
-          console.warn(`[SECURITY] Payment mismatch for order ${razorpay_order_id}. Expected: ${expectedAmountPaise}, Got: ${payment.amount}`);
-          return res.status(400).json({
-            success: false,
-            message: 'Payment verification failed — invalid amount or status',
-          });
-        }
-      } catch (fetchErr) {
-        console.error('Failed to fetch Razorpay payment details:', fetchErr.message);
-        return res.status(500).json({ success: false, message: 'Failed to verify payment integrity' });
-      }
-    }
-
-    // Increment enrollment count after confirming payment is fully valid
-    if (liveCourseId) {
-      enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
-      await enrolledItem.save();
-    } else if (courseId) {
-      enrolledItem.enrollmentCount = (enrolledItem.enrollmentCount || 0) + 1;
-      await enrolledItem.save();
-    }
-
-    if (!enrolledItem) {
-      return res.status(500).json({ success: false, message: 'Enrollment failed — course data missing' });
-    }
-
-    let enrollment;
+    // ── Regular Enrollment ──
     try {
-      enrollment = await Enrollment.create(enrollData);
-    } catch (createErr) {
-      // Gracefully handle duplicate-key race condition (E11000)
-      if (createErr.code === 11000) {
-        const duplicateQuery = { user: req.user.id };
-        if (liveCourseId) duplicateQuery.liveCourse = liveCourseId;
-        else if (courseId) duplicateQuery.course = courseId;
-
-        const existingRecord = await Enrollment.findOne(duplicateQuery);
-        return res.status(200).json({
-          success: true,
-          alreadyEnrolled: true,
-          message: 'Already enrolled in this course',
-          data: existingRecord,
-        });
-      }
-      throw createErr; // Re-throw non-duplicate errors
-    }
-
-    // If it's a live course, also save the detailed application form
-    if (liveCourseId && gender && whatsappNumber) {
-      try {
-        await CohortApplication.create({
-          user: req.user.id,
-          liveCourse: liveCourseId,
-          fullName: fullName || req.user.name,
-          email: email || req.user.email,
-          mobileNumber: phone,
-          whatsappNumber,
-          gender,
-          courseDepartment,
-          experienceLevel,
-          status: 'Enrolled'
-        });
-      } catch (appErr) {
-        console.error('Failed to create cohort application:', appErr);
-        // Do not fail the whole payment flow if just the application record fails
-      }
-    }
-
-    // Auto-generate Receipt
-    try {
-      // Generate sequential receipt number using Counter
-      const serialNumber = await Counter.getNextSequence('receipts');
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      const fiscalStartYear = month >= 4 ? year : year - 1;
-      const fiscalYear = `${fiscalStartYear}-${String(fiscalStartYear + 1).slice(-2)}`;
-      const paddedSerial = String(serialNumber).padStart(4, '0');
-      const receiptId = `FWT-iZON-RECEIPT-${fiscalYear}-${paddedSerial}`;
-
-      const receiptData = {
-        receiptId,
-        serialNumber,
-        userName: fullName || req.user.name || 'Student',
-        userEmail: email || req.user.email,
-        courseName: enrolledItem.title,
-        amount: enrolledItem.price,
+      const result = await enrollUserInCourse({
+        user: req.user, courseId, liveCourseId, fullName, email, phone, message,
+        gender, whatsappNumber, courseDepartment, experienceLevel,
         paymentId: razorpay_payment_id || `mock_pay_${Date.now()}`,
-        orderId: razorpay_order_id || 'N/A',
-        date: now,
-        status: 'SUCCESS'
-      };
-
-      const pdfBuffer = await generateReceiptPDF(receiptData);
-      const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${receiptId}-${req.user.id}`, 'fwtion/receipts');
-
-      await Receipt.create({
-        receiptId,
-        user: req.user.id,
-        course: courseId || undefined,
-        liveCourse: liveCourseId || undefined,
-        enrollment: enrollment._id,
-        paymentId: receiptData.paymentId,
-        orderId: receiptData.orderId,
-        amount: receiptData.amount,
-        userName: receiptData.userName,
-        userEmail: receiptData.userEmail,
-        courseName: receiptData.courseName,
-        fileUrl,
-        status: 'SUCCESS'
+        orderId: razorpay_order_id || 'N/A', isAdminBypass: false
       });
-    } catch (receiptError) {
-      console.error('Failed to auto-generate receipt:', receiptError);
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('Regular Enrollment Error:', err);
+      if (err.message.includes('Payment verification failed') || err.message.includes('not found') || err.message.includes('full')) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
+      return res.status(500).json({ success: false, message: err.message || 'Server error' });
     }
-
-    await Notification.create({
-      user: req.user.id,
-      type: 'payment',
-      message: `You have successfully enrolled in "${enrolledItem?.title || 'the course'}"!`,
-      link: courseId ? `/learn/${enrolledItem._id}` : '/dashboard',
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Payment verified and enrolled successfully',
-      data: enrollment,
-    });
   } catch (error) {
-    console.error('VERIFY PAYMENT ERROR:', error);
+    console.error('VERIFY PAYMENT MAIN ERROR:', error);
     res.status(500).json({ success: false, message: error.message || 'Internal Server Error' });
   }
 };

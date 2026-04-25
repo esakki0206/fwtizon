@@ -19,6 +19,7 @@ const SCALE_Y = PAGE_H / TEMPLATE_H;
 const WHITE = '#FFFFFF';
 const COLOR_DARK = '#111111';
 const COLOR_NAVY = '#1B2A4A';
+const COLOR_ORANGE = '#EA580C'; // Professional orange color
 
 const POS = {
   name: {
@@ -42,20 +43,20 @@ const POS = {
 
 
   date: {
-    x: 2205,
-    y: 3294,
-    width: 136,
-    height: 30,
-    wipe: { x: 2200, y: 3290, width: 146, height: 38 },
-    baselineAdjust: 0.2,
+    x: 2200,
+    y: 3298,
+    width: 141,
+    height: 41,
+    wipe: { x: 2198, y: 3292, width: 157, height: 54 },
+    baselineAdjust: 0.3,
   },
 
   slNo: {
     x: 2195,
-    y: 3379,
-    width: 146,
-    height: 35,
-    wipe: { x: 2190, y: 3375, width: 156, height: 43 },
+    y: 3371,
+    width: 151,
+    height: 24,
+    wipe: { x: 2194, y: 3371, width: 162, height: 55 },
     baselineAdjust: 0.2,
   },
 };
@@ -142,11 +143,7 @@ function drawSingleLine(doc, text, field, options) {
   }
 
   const drawY = box.y + Math.max(0, (box.height - textHeight) / 2) + baselineAdjust;
-  const drawWidth = align === 'center' ? Math.max(textWidth, 1) : box.width;
-
   doc.text(text, drawX, drawY, {
-    width: drawWidth,
-    align,
     lineBreak: false,
   });
 
@@ -216,10 +213,10 @@ export const generateCertificatePDF = (data) => {
 
       whiteout(doc, POS.course.wipe);
       drawSingleLine(doc, String(courseName), POS.course, {
-        font: 'GreatVibes',
-        color: COLOR_NAVY,
-        maxSize: 22,
-        minSize: 14,
+        font: 'Helvetica-Bold',
+        color: COLOR_ORANGE,
+        maxSize: 28,
+        minSize: 10,
         align: 'center',
         baselineAdjust: POS.course.baselineAdjust,
       });
@@ -230,8 +227,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, formatCertDate(completionDate), POS.date, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 8,
-        minSize: 5,
+        maxSize: 11,
+        minSize: 6,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });
@@ -240,8 +237,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, getCertificateSerial(certificateId, serialNumber), POS.slNo, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 9,
-        minSize: 6,
+        maxSize: 12,
+        minSize: 4,
         align: 'left',
         baselineAdjust: POS.slNo.baselineAdjust,
       });

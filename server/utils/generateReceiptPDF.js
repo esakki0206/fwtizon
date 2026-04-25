@@ -22,11 +22,11 @@ const COLOR_BODY = '#222222';
 
 const POS = {
   receiptNo: {
-    x: 472,
-    y: 699,
-    width: 842,
-    height: 52,
-    wipe: { x: 474, y: 701, width: 838, height: 48 },
+    x: 1096,
+    y: 705,
+    width: 155,
+    height: 50,
+    wipe: { x: 1096, y: 704, width: 155, height: 40 },
     baselineAdjust: 0.2,
   },
   date: {
@@ -39,10 +39,10 @@ const POS = {
   },
   name: {
     x: 472,
-    y: 754,
+    y: 765,
     width: 693,
     height: 38,
-    wipe: { x: 468, y: 750, width: 701, height: 46 },
+    wipe: { x: 471, y: 750, width: 702, height: 46 },
     baselineAdjust: 0.2,
   },
   slNo: {
@@ -54,19 +54,19 @@ const POS = {
     baselineAdjust: 0.2,
   },
   course: {
-    x: 999,
+    x: 989,
     y: 1005,
-    width: 321,
+    width: 324,
     height: 38,
-    wipe: { x: 995, y: 1001, width: 329, height: 46 },
+    wipe: { x: 970, y: 1001, width: 360, height: 46 },
     baselineAdjust: 0.2,
   },
   amount: {
-    x: 1983,
+    x: 1980,
     y: 1005,
     width: 226,
     height: 38,
-    wipe: { x: 1979, y: 1001, width: 234, height: 46 },
+    wipe: { x: 1978, y: 1001, width: 264, height: 46 },
     baselineAdjust: 0.2,
   },
   total: {
@@ -78,11 +78,11 @@ const POS = {
     baselineAdjust: 0.2,
   },
   words: {
-    x: 743,
+    x: 740,
     y: 1353,
     width: 592,
     height: 40,
-    wipe: { x: 739, y: 1349, width: 600, height: 48 },
+    wipe: { x: 720, y: 1349, width: 625, height: 48 },
     baselineAdjust: 0.2,
   },
 };
@@ -143,8 +143,7 @@ function drawSingleLine(doc, text, field, options) {
   if (align === 'center') drawX += Math.max(0, (box.width - textWidth) / 2);
   else if (align === 'right') drawX += Math.max(0, box.width - textWidth);
   const drawY = box.y + Math.max(0, (box.height - textHeight) / 2) + baselineAdjust;
-  const drawWidth = align === 'center' ? Math.max(textWidth, 1) : box.width;
-  doc.text(text, drawX, drawY, { width: drawWidth, align, lineBreak: false });
+  doc.text(text, drawX, drawY, { lineBreak: false });
   doc.restore();
 }
 
@@ -176,14 +175,16 @@ function getFiscalYear(date) {
 
 function buildReceiptNo(receiptId, serialNumber, date) {
   if (serialNumber !== undefined && serialNumber !== null) {
-    const fiscalYear = getFiscalYear(date || new Date());
-    const padded = String(serialNumber).padStart(2, '0');
-    return `FWT-iZON-RECEIPT-${fiscalYear}-${padded}`;
+    return String(serialNumber).padStart(4, '0');
   }
-  if (receiptId && String(receiptId).startsWith('FWT-iZON-RECEIPT')) {
-    return receiptId;
+
+  if (receiptId) {
+    const match = String(receiptId).match(/-(\d+)$/);
+    if (match) return match[1].padStart(4, '0');
+    return String(receiptId);
   }
-  return receiptId ? String(receiptId) : `FWT-iZON-RECEIPT-${getFiscalYear(new Date())}-01`;
+
+  return '0001';
 }
 
 function formatReceiptDate(date) {
@@ -238,7 +239,7 @@ export const generateReceiptPDF = (data) => {
         font: 'Helvetica',
         color: COLOR_DARK,
         maxSize: 9.5,
-        minSize: 6.5,
+        minSize: 4,
         align: 'left',
         baselineAdjust: POS.receiptNo.baselineAdjust,
       });
@@ -248,7 +249,7 @@ export const generateReceiptPDF = (data) => {
         font: 'Helvetica',
         color: COLOR_DARK,
         maxSize: 9,
-        minSize: 6,
+        minSize: 4,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });
@@ -258,26 +259,18 @@ export const generateReceiptPDF = (data) => {
         font: 'Helvetica',
         color: COLOR_DARK,
         maxSize: 9,
-        minSize: 6.5,
+        minSize: 4,
         align: 'left',
         baselineAdjust: POS.name.baselineAdjust,
       });
 
-      whiteout(doc, POS.slNo.wipe);
-      drawSingleLine(doc, '1', POS.slNo, {
-        font: 'Helvetica',
-        color: COLOR_DARK,
-        maxSize: 9,
-        minSize: 6,
-        align: 'center',
-        baselineAdjust: POS.slNo.baselineAdjust,
-      });
+      // slNo rendering removed as requested
 
       whiteout(doc, POS.course.wipe);
       drawSingleLine(doc, String(courseName), POS.course, {
         font: 'Helvetica',
         color: COLOR_DARK,
-        maxSize: 9,
+        maxSize: 11,
         minSize: 7,
         align: 'center',
         baselineAdjust: POS.course.baselineAdjust,
@@ -297,8 +290,8 @@ export const generateReceiptPDF = (data) => {
       drawSingleLine(doc, amountFormatted, POS.total, {
         font: 'Helvetica',
         color: COLOR_BODY,
-        maxSize: 10,
-        minSize: 7,
+        maxSize: 11,
+        minSize: 8,
         align: 'center',
         baselineAdjust: POS.total.baselineAdjust,
       });

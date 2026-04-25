@@ -348,7 +348,7 @@ export const verifyPayment = async (req, res) => {
       const month = now.getMonth() + 1;
       const fiscalStartYear = month >= 4 ? year : year - 1;
       const fiscalYear = `${fiscalStartYear}-${String(fiscalStartYear + 1).slice(-2)}`;
-      const paddedSerial = String(serialNumber).padStart(2, '0');
+      const paddedSerial = String(serialNumber).padStart(4, '0');
       const receiptId = `FWT-iZON-RECEIPT-${fiscalYear}-${paddedSerial}`;
 
       const receiptData = {

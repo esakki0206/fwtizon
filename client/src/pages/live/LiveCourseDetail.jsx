@@ -937,7 +937,7 @@ const LiveCourseDetail = () => {
               <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Registration Fee</span>
-                  <span className="text-base font-black text-gray-900 dark:text-white">₹{course.price}</span>
+                  <span className="text-base font-black text-gray-900 dark:text-white">₹{appliedCoupon ? appliedCoupon.finalPrice : course.price}</span>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -952,7 +952,7 @@ const LiveCourseDetail = () => {
                     form="enrollment-form"
                     className="flex-[2] py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-primary-600/30 active:scale-[0.98] transition"
                   >
-                    Apply &amp; Pay ₹{course.price}
+                    Apply &amp; Pay ₹{appliedCoupon ? appliedCoupon.finalPrice : course.price}
                   </button>
                 </div>
                 <p className="mt-2 text-center text-xs text-gray-400 flex items-center justify-center gap-1">

@@ -1,5 +1,6 @@
 import Course from '../models/Course.js';
 import LiveCourse from '../models/LiveCourse.js';
+import Coupon from '../models/Coupon.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 

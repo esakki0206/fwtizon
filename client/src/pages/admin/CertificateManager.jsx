@@ -62,15 +62,15 @@ const CertificateManager = () => {
   const [certificates, setCertificates] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Custom Generation Flow State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generatorType, setGeneratorType] = useState('COURSE'); // 'COURSE' or 'COHORT'
-  
+
   // Lists
   const [courses, setCourses] = useState([]);
   const [cohorts, setCohorts] = useState([]);
-  
+
   // Selections
   const [selectedId, setSelectedId] = useState('');
   const [enrolledStudents, setEnrolledStudents] = useState([]);
@@ -108,7 +108,7 @@ const CertificateManager = () => {
       setCourses(coursesRes.data.data || []);
       setCohorts(cohortsRes.data.data || []);
     } catch (err) {
-      toast.error('Failed to load courses and cohorts');
+      toast.error('Failed to load courses and courses');
     }
   };
 
@@ -125,10 +125,10 @@ const CertificateManager = () => {
 
     try {
       setLoadingStudents(true);
-      const url = generatorType === 'COURSE' 
+      const url = generatorType === 'COURSE'
         ? `/api/admin/courses/${id}/enrolled-students`
         : `/api/admin/cohorts/${id}/students`;
-        
+
       const res = await axios.get(url);
       setEnrolledStudents(res.data.data || []);
     } catch (err) {
@@ -141,24 +141,24 @@ const CertificateManager = () => {
   const handleGenerateClick = async (userId) => {
     try {
       setGeneratingFor(userId);
-      const url = generatorType === 'COURSE' 
+      const url = generatorType === 'COURSE'
         ? '/api/admin/generate-certificate'
         : '/api/admin/generate-cohort-certificate';
-        
-      const payload = generatorType === 'COURSE' 
+
+      const payload = generatorType === 'COURSE'
         ? { userId, courseId: selectedId }
         : { userId, cohortId: selectedId };
 
       await axios.post(url, payload);
       toast.success('Certificate generated successfully!');
-      
+
       // Refresh context
       handleSelection(selectedId);
-      
+
       // Update background list silently
       const certRes = await axios.get('/api/admin/certificates');
       setCertificates(certRes.data.data || []);
-      
+
     } catch (err) {
       toast.error(err.response?.data?.message || 'Certificate generation failed');
     } finally {
@@ -193,82 +193,94 @@ const CertificateManager = () => {
 
   const certColumns = [
     { header: 'Certificate ID', accessorKey: 'certificateId', cell: (row) => <span className="font-mono text-xs text-gray-500">{row.certificateId}</span> },
-    { header: 'Type', accessorKey: 'type', cell: (row) => (
-      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${row.type === 'COHORT' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-        {row.type || 'COURSE'}
-      </span>
-    )},
-    { header: 'Student', accessorKey: 'studentName', cell: (row) => (
-      <div>
-        <div className="font-bold text-gray-900 dark:text-white">{row.studentName}</div>
-        <div className="text-[10px] text-gray-500">{row.studentEmail}</div>
-      </div>
-    )},
+    {
+      header: 'Type', accessorKey: 'type', cell: (row) => (
+        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${row.type === 'COHORT' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+          {row.type || 'COURSE'}
+        </span>
+      )
+    },
+    {
+      header: 'Student', accessorKey: 'studentName', cell: (row) => (
+        <div>
+          <div className="font-bold text-gray-900 dark:text-white">{row.studentName}</div>
+          <div className="text-[10px] text-gray-500">{row.studentEmail}</div>
+        </div>
+      )
+    },
     { header: 'Program', accessorKey: 'courseName', cell: (row) => <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">{row.courseName}</span> },
     { header: 'Issue Date', accessorKey: 'issueDate', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.issueDate).toLocaleDateString()}</span> },
-    { header: 'Action', accessorKey: 'actions', cell: (row) => {
-      const viewUrl = row.viewUrl || `/api/certificates/${row.certificateId}/view`;
-      const downloadUrl = row.downloadUrl || `/api/certificates/${row.certificateId}/download`;
-      return (
-        <div className="flex space-x-2">
-          <button
-            onClick={() => viewPdfAuth(viewUrl)}
-            title="View PDF"
-            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
-          >
-            <FiEye size={14} />
-          </button>
-          <button
-            onClick={() => downloadPdfAuth(downloadUrl, `${row.certificateId}.pdf`)}
-            title="Download PDF"
-            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
-          >
-            <FiDownload size={14} />
-          </button>
-          <Button variant="outline" size="sm" title="Regenerate PDF" onClick={() => handleRegenerate(row._id)}><FiRefreshCw size={14} /></Button>
-          <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(row._id, 'cert')}><FiTrash2 size={14} /></Button>
-        </div>
-      );
-    }},
+    {
+      header: 'Action', accessorKey: 'actions', cell: (row) => {
+        const viewUrl = row.viewUrl || `/api/certificates/${row.certificateId}/view`;
+        const downloadUrl = row.downloadUrl || `/api/certificates/${row.certificateId}/download`;
+        return (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => viewPdfAuth(viewUrl)}
+              title="View PDF"
+              className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
+            >
+              <FiEye size={14} />
+            </button>
+            <button
+              onClick={() => downloadPdfAuth(downloadUrl, `${row.certificateId}.pdf`)}
+              title="Download PDF"
+              className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
+            >
+              <FiDownload size={14} />
+            </button>
+            <Button variant="outline" size="sm" title="Regenerate PDF" onClick={() => handleRegenerate(row._id)}><FiRefreshCw size={14} /></Button>
+            <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(row._id, 'cert')}><FiTrash2 size={14} /></Button>
+          </div>
+        );
+      }
+    },
   ];
 
   const receiptColumns = [
     { header: 'Receipt No', accessorKey: 'receiptId', cell: (row) => <span className="font-mono text-xs text-gray-500">{row.receiptId}</span> },
-    { header: 'Student', accessorKey: 'userName', cell: (row) => (
-      <div>
-        <div className="font-bold text-gray-900 dark:text-white">{row.userName}</div>
-        <div className="text-[10px] text-gray-500">{row.userEmail}</div>
-      </div>
-    )},
-    { header: 'Amount', accessorKey: 'amount', cell: (row) => <span className="font-bold text-gray-900 dark:text-white">₹{row.amount}</span> },
-    { header: 'Status', accessorKey: 'status', cell: (row) => (
-      <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 flex w-max items-center">
-        <FiCheckCircle className="mr-1" /> {row.status}
-      </span>
-    )},
-    { header: 'Date', accessorKey: 'createdAt', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.createdAt).toLocaleDateString()}</span> },
-    { header: 'Download', accessorKey: 'actions', cell: (row) => {
-      const downloadUrl = row.downloadUrl || `/api/receipts/${row.receiptId}/download`;
-      const viewUrl = row.viewUrl || `/api/receipts/${row.receiptId}/view`;
-      return (
-        <div className="flex space-x-2">
-          <button
-            onClick={() => downloadPdfAuth(downloadUrl, `${row.receiptId}.pdf`)}
-            title="Download PDF"
-            className="inline-flex items-center justify-center gap-1.5 p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
-          >
-            <FiDownload size={14} /> Download
-          </button>
-          <button
-            onClick={() => viewPdfAuth(viewUrl)}
-            title="View PDF"
-            className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
-          >
-            <FiEye size={14} />
-          </button>
+    {
+      header: 'Student', accessorKey: 'userName', cell: (row) => (
+        <div>
+          <div className="font-bold text-gray-900 dark:text-white">{row.userName}</div>
+          <div className="text-[10px] text-gray-500">{row.userEmail}</div>
         </div>
-      );
-    }},
+      )
+    },
+    { header: 'Amount', accessorKey: 'amount', cell: (row) => <span className="font-bold text-gray-900 dark:text-white">₹{row.amount}</span> },
+    {
+      header: 'Status', accessorKey: 'status', cell: (row) => (
+        <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 flex w-max items-center">
+          <FiCheckCircle className="mr-1" /> {row.status}
+        </span>
+      )
+    },
+    { header: 'Date', accessorKey: 'createdAt', cell: (row) => <span className="text-xs text-gray-500">{new Date(row.createdAt).toLocaleDateString()}</span> },
+    {
+      header: 'Download', accessorKey: 'actions', cell: (row) => {
+        const downloadUrl = row.downloadUrl || `/api/receipts/${row.receiptId}/download`;
+        const viewUrl = row.viewUrl || `/api/receipts/${row.receiptId}/view`;
+        return (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => downloadPdfAuth(downloadUrl, `${row.receiptId}.pdf`)}
+              title="Download PDF"
+              className="inline-flex items-center justify-center gap-1.5 p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-emerald-600"
+            >
+              <FiDownload size={14} /> Download
+            </button>
+            <button
+              onClick={() => viewPdfAuth(viewUrl)}
+              title="View PDF"
+              className="inline-flex items-center justify-center p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sky-600"
+            >
+              <FiEye size={14} />
+            </button>
+          </div>
+        );
+      }
+    },
   ];
 
   return (
@@ -326,7 +338,7 @@ const CertificateManager = () => {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm shadow-2xl">
           <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 dark:border-gray-800">
-            
+
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold">Certificate Generator</h2>
@@ -336,7 +348,7 @@ const CertificateManager = () => {
             </div>
 
             <div className="p-6 overflow-y-auto flex-1 bg-gray-50 dark:bg-gray-900/50">
-              
+
               {/* TOGGLE TAB */}
               <div className="flex border-b border-gray-200 dark:border-gray-700 mb-8 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm">
                 <button
@@ -350,26 +362,26 @@ const CertificateManager = () => {
                   onClick={() => setGeneratorType('COHORT')}
                   className={`flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${generatorType === 'COHORT' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
-                  <span className="flex items-center justify-center"><FiUser className="mr-2" /> Cohort Certificates</span>
+                  <span className="flex items-center justify-center"><FiUser className="mr-2" /> Live Course Certificates</span>
                 </button>
               </div>
 
               {/* STEP 1: SELECT */}
               <div className="mb-8 bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Step 1: Select {generatorType === 'COURSE' ? 'Recorded Course' : 'Live Cohort'}</label>
-                <select 
-                  value={selectedId} 
-                  onChange={e => handleSelection(e.target.value)} 
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Step 1: Select {generatorType === 'COURSE' ? 'Recorded Course' : 'Live Course'}</label>
+                <select
+                  value={selectedId}
+                  onChange={e => handleSelection(e.target.value)}
                   className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none"
                 >
-                  <option value="">-- Choose {generatorType === 'COURSE' ? 'Course' : 'Cohort'} --</option>
+                  <option value="">-- Choose {generatorType === 'COURSE' ? 'Course' : 'Live Course'} --</option>
                   {(generatorType === 'COURSE' ? courses : cohorts).map(c => (
                     <option key={c._id} value={c._id}>{c.title}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-400 mt-2">
-                  {generatorType === 'COHORT' 
-                    ? "Cohort Certificates do NOT require students to finish 100% of modules. Any active payment enrollment can be instantly generated." 
+                  {generatorType === 'COHORT'
+                    ? "Live Course Certificates do NOT require students to finish 100% of modules. Any active payment enrollment can be instantly generated."
                     : "Course Certificates REQUIRE students to be at 100% completion in normal scenarios to see the generate button."}
                 </p>
               </div>
@@ -378,7 +390,7 @@ const CertificateManager = () => {
               {selectedId && (
                 <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-4">Step 2: Paid Authenticated Students</label>
-                  
+
                   {loadingStudents ? (
                     <div className="py-12 text-center text-gray-500">Loading student records...</div>
                   ) : enrolledStudents.length === 0 ? (
@@ -401,7 +413,7 @@ const CertificateManager = () => {
                           {enrolledStudents.map(student => {
                             // Generator logic constraints
                             const canGenerate = generatorType === 'COHORT' || student.completionStatus === 'COMPLETED';
-                            
+
                             return (
                               <tr key={student.userId} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
                                 <td className="px-6 py-4">
@@ -410,7 +422,7 @@ const CertificateManager = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                   <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${student.completionStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' : student.completionStatus === 'ELIGIBLE' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {student.completionStatus === 'COMPLETED' ? <><FiCheckCircle className="inline mr-1" /> COMPLETED</> : student.completionStatus === 'ELIGIBLE' ? 'COHORT ELIGIBLE' : 'IN PROGRESS'}
+                                    {student.completionStatus === 'COMPLETED' ? <><FiCheckCircle className="inline mr-1" /> COMPLETED</> : student.completionStatus === 'ELIGIBLE' ? 'LIVE COURSE ELIGIBLE' : 'IN PROGRESS'}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500">
@@ -418,8 +430,8 @@ const CertificateManager = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                   {canGenerate ? (
-                                    <Button 
-                                      size="sm" 
+                                    <Button
+                                      size="sm"
                                       className={`font-bold text-white ${generatorType === 'COHORT' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                                       onClick={() => handleGenerateClick(student.userId)}
                                       disabled={generatingFor === student.userId}
@@ -444,7 +456,7 @@ const CertificateManager = () => {
             <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex justify-end">
               <Button onClick={() => setIsModalOpen(false)} variant="outline" className="font-bold">Close Manager</Button>
             </div>
-            
+
           </div>
         </div>
       )}

@@ -325,81 +325,81 @@ const Dashboard = () => {
               {liveEnrollments.map((en) => {
                 const fbStatus = feedbackStatuses[en.liveCourse?._id];
                 return (
-                <div key={en._id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-accent-600 bg-accent-50 dark:bg-accent-900/20 px-2.5 py-1 rounded-md">Live Cohort</span>
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 leading-snug line-clamp-2">{en.liveCourse?.title}</h3>
+                  <div key={en._id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-accent-600 bg-accent-50 dark:bg-accent-900/20 px-2.5 py-1 rounded-md">Live Courses</span>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 leading-snug line-clamp-2">{en.liveCourse?.title}</h3>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 mt-2 mb-4">
+                      <p className="text-xs text-gray-500">Starts: {formatLiveCourseDate(en.liveCourse, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                      {getLiveCourseTimingText(en.liveCourse) ? (
+                        <p className="text-xs text-gray-500">Timing: {getLiveCourseTimingText(en.liveCourse)}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-col space-y-3">
+                      {en.liveCourse?.zoomLink && (
+                        <a href={en.liveCourse.zoomLink} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center py-2.5 px-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors">
+                          <FiVideo className="mr-2" /> Join Zoom Session
+                        </a>
+                      )}
+                      {en.liveCourse?.whatsappGroup && (
+                        <a href={en.liveCourse.whatsappGroup} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center py-2.5 px-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-bold rounded-xl hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors border border-green-200 dark:border-green-800">
+                          <FiCompass className="mr-2" /> WhatsApp Community
+                        </a>
+                      )}
+
+                      {/* Feedback / Certificate Section */}
+                      {fbStatus?.formAvailable && (
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                          {fbStatus.isSubmitted ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center text-xs text-green-600 dark:text-green-400 font-bold">
+                                <FiCheckCircle className="mr-1.5" size={14} /> Feedback submitted
+                              </div>
+                              {fbStatus.certificate && (
+                                <button
+                                  onClick={async () => {
+                                    const toastId = toast.loading('Preparing download…');
+                                    try {
+                                      const url = `${BACKEND_BASE}${fbStatus.certificate.downloadUrl}`;
+                                      const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+                                      const blob = new Blob([res.data], { type: 'application/pdf' });
+                                      const blobUrl = URL.createObjectURL(blob);
+                                      const link = document.createElement('a');
+                                      link.href = blobUrl;
+                                      link.download = `${fbStatus.certificate.certificateId || 'certificate'}.pdf`;
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      link.remove();
+                                      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+                                      toast.success('Download started!', { id: toastId });
+                                    } catch (err) {
+                                      console.error('Certificate download error:', err);
+                                      toast.error('Download failed. Please try again.', { id: toastId });
+                                    }
+                                  }}
+                                  className="w-full flex items-center justify-center py-2.5 px-4 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
+                                  <FiDownload className="mr-2" /> Download Certificate
+                                </button>
+                              )}
+                            </div>
+                          ) : fbStatus.isUnlocked ? (
+                            <button onClick={() => openFeedbackModal(en.liveCourse._id)}
+                              className="w-full flex items-center justify-center py-2.5 px-4 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-bold rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors border border-amber-200 dark:border-amber-800">
+                              <FiMessageSquare className="mr-2" /> Give Feedback & Get Certificate
+                            </button>
+                          ) : (
+                            <div className="flex items-center text-xs text-gray-400 font-medium py-2">
+                              <FiLock className="mr-1.5" size={12} /> Feedback available after course completion
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="space-y-1.5 mt-2 mb-4">
-                    <p className="text-xs text-gray-500">Starts: {formatLiveCourseDate(en.liveCourse, 'en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-                    {getLiveCourseTimingText(en.liveCourse) ? (
-                      <p className="text-xs text-gray-500">Timing: {getLiveCourseTimingText(en.liveCourse)}</p>
-                    ) : null}
-                  </div>
-                  
-                  <div className="flex flex-col space-y-3">
-                    {en.liveCourse?.zoomLink && (
-                      <a href={en.liveCourse.zoomLink} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center py-2.5 px-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors">
-                        <FiVideo className="mr-2" /> Join Zoom Session
-                      </a>
-                    )}
-                    {en.liveCourse?.whatsappGroup && (
-                      <a href={en.liveCourse.whatsappGroup} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center py-2.5 px-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-bold rounded-xl hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors border border-green-200 dark:border-green-800">
-                        <FiCompass className="mr-2" /> WhatsApp Community
-                      </a>
-                    )}
-
-                    {/* Feedback / Certificate Section */}
-                    {fbStatus?.formAvailable && (
-                      <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
-                        {fbStatus.isSubmitted ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center text-xs text-green-600 dark:text-green-400 font-bold">
-                              <FiCheckCircle className="mr-1.5" size={14}/> Feedback submitted
-                            </div>
-                            {fbStatus.certificate && (
-                              <button
-                                onClick={async () => {
-                                  const toastId = toast.loading('Preparing download…');
-                                  try {
-                                    const url = `${BACKEND_BASE}${fbStatus.certificate.downloadUrl}`;
-                                    const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
-                                    const blob = new Blob([res.data], { type: 'application/pdf' });
-                                    const blobUrl = URL.createObjectURL(blob);
-                                    const link = document.createElement('a');
-                                    link.href = blobUrl;
-                                    link.download = `${fbStatus.certificate.certificateId || 'certificate'}.pdf`;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    link.remove();
-                                    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-                                    toast.success('Download started!', { id: toastId });
-                                  } catch (err) {
-                                    console.error('Certificate download error:', err);
-                                    toast.error('Download failed. Please try again.', { id: toastId });
-                                  }
-                                }}
-                                className="w-full flex items-center justify-center py-2.5 px-4 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
-                                <FiDownload className="mr-2" /> Download Certificate
-                              </button>
-                            )}
-                          </div>
-                        ) : fbStatus.isUnlocked ? (
-                          <button onClick={() => openFeedbackModal(en.liveCourse._id)}
-                            className="w-full flex items-center justify-center py-2.5 px-4 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-bold rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors border border-amber-200 dark:border-amber-800">
-                            <FiMessageSquare className="mr-2" /> Give Feedback & Get Certificate
-                          </button>
-                        ) : (
-                          <div className="flex items-center text-xs text-gray-400 font-medium py-2">
-                            <FiLock className="mr-1.5" size={12}/> Feedback available after course completion
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
                 );
               })}
             </div>

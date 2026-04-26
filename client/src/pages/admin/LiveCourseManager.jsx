@@ -30,7 +30,7 @@ const LiveCourseManager = () => {
       setLiveCourses(res.data.data || []);
     } // eslint-disable-next-line no-unused-vars
     catch (err) {
-      toast.error('Failed to load live cohorts');
+      toast.error('Failed to load live courses');
     } finally {
       setLoading(false);
     }
@@ -115,13 +115,13 @@ const LiveCourseManager = () => {
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
-    if (!window.confirm('Are you sure you want to delete this live cohort?')) return;
+    if (!window.confirm('Are you sure you want to delete this live course?')) return;
     try {
       await axios.delete(`/api/admin/live-courses/${id}`);
-      toast.success('Live Cohort deleted successfully');
+      toast.success('Live Course deleted successfully');
       setLiveCourses(liveCourses.filter(c => c._id !== id));
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete cohort');
+      toast.error(err.response?.data?.message || 'Failed to delete course');
     }
   };
 
@@ -154,7 +154,7 @@ const LiveCourseManager = () => {
       link.href = url;
       const courseName = currentCourse?.title
         ? currentCourse.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)
-        : 'cohort';
+        : 'course';
       link.setAttribute('download', `applications_${courseName}_${Date.now()}.xlsx`);
       document.body.appendChild(link);
       link.click();
@@ -181,15 +181,15 @@ const LiveCourseManager = () => {
     try {
       if (editingCourse) {
         await axios.put(`/api/admin/live-courses/${editingCourse}`, formData);
-        toast.success('Cohort updated successfully');
+        toast.success('Course updated successfully');
       } else {
         await axios.post('/api/admin/live-courses', formData);
-        toast.success('Cohort created successfully');
+        toast.success('Course created successfully');
       }
       setView('list');
       fetchLiveCourses();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save cohort');
+      toast.error(err.response?.data?.message || 'Failed to save course');
     }
   };
 
@@ -201,7 +201,7 @@ const LiveCourseManager = () => {
 
   const columns = [
     {
-      header: 'Cohort Name',
+      header: 'Live Course Name',
       accessorKey: 'title',
       cell: (row) => {
         const instructorName = resolveInstructorName(row);
@@ -249,11 +249,10 @@ const LiveCourseManager = () => {
       header: 'Status',
       accessorKey: 'status',
       cell: (row) => (
-        <span className={`px-2 py-1 rounded text-xs font-bold ${
-          row.status === 'Ongoing' || row.status === 'Published'
-            ? 'bg-green-100 text-green-700 dark:bg-green-900/30'
-            : 'bg-gray-100 text-gray-600 dark:bg-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs font-bold ${row.status === 'Ongoing' || row.status === 'Published'
+          ? 'bg-green-100 text-green-700 dark:bg-green-900/30'
+          : 'bg-gray-100 text-gray-600 dark:bg-gray-800'
+          }`}>
           {row.status || 'Draft'}
         </span>
       ),
@@ -278,7 +277,7 @@ const LiveCourseManager = () => {
     <div className="animate-in fade-in duration-500">
       {view === 'list' && (
         <AdminTable
-          title="Live Cohorts"
+          title="Live Courses"
           description="Manage active synchronous learning streams."
           columns={columns}
           data={liveCourses}
@@ -286,7 +285,7 @@ const LiveCourseManager = () => {
           onRowClick={(row) => handleEdit(row)}
           renderActions={() => (
             <Button className="font-bold" onClick={handleCreateNew}>
-              <FiPlus className="mr-2" /> New Cohort
+              <FiPlus className="mr-2" /> New Live Course
             </Button>
           )}
         />
@@ -297,12 +296,12 @@ const LiveCourseManager = () => {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {editingCourse ? 'Edit Live Cohort' : 'New Live Cohort'}
+                {editingCourse ? 'Edit Live Course' : 'New Live Course'}
               </h2>
             </div>
             <div className="flex space-x-3">
               <Button variant="outline" onClick={() => setView('list')}>Cancel</Button>
-              <Button onClick={handleSave}>Save Cohort</Button>
+              <Button onClick={handleSave}>Save Course</Button>
             </div>
           </div>
 
@@ -313,7 +312,7 @@ const LiveCourseManager = () => {
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Cohort Title <span className="text-red-500">*</span>
+                      Live Course Title <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -573,9 +572,9 @@ const LiveCourseManager = () => {
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Cohort Applications</h2>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Course Applications</h2>
               <p className="text-gray-500 text-sm truncate">
-                {currentCourse?.title || 'Selected cohort'}
+                {currentCourse?.title || 'Selected course'}
                 {currentCourse && (
                   <span className="ml-2 text-xs font-medium text-primary-600 dark:text-primary-400">
                     — {currentCourse.instructorName || currentCourse.instructor?.name || 'No instructor set'}
@@ -596,7 +595,7 @@ const LiveCourseManager = () => {
                 </Button>
               )}
               <Button variant="outline" onClick={() => { setView('list'); setCurrentCourse(null); }}>
-                Back to Cohorts
+                Back to Courses
               </Button>
             </div>
           </div>
@@ -653,11 +652,10 @@ const LiveCourseManager = () => {
                             <div className="text-gray-500 text-xs">{app.experienceLevel || 'N/A'}</div>
                           </td>
                           <td className="px-4 sm:px-6 py-4">
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${
-                              app.status === 'Enrolled'
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                            }`}>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${app.status === 'Enrolled'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                              }`}>
                               {app.status || 'Applied'}
                             </span>
                           </td>

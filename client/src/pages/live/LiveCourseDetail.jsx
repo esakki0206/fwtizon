@@ -15,7 +15,7 @@ import { addToGoogleCalendar } from '../../lib/googleCalendar';
 // ── Small Google Calendar Icon ─────────────────────────────────────────────
 const CalendarIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+    <path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 16H5V8h14v11zM7 10h5v5H7z" />
   </svg>
 );
 
@@ -335,11 +335,10 @@ const LiveCourseDetail = () => {
           </button>
           <button
             onClick={handleAddToCalendar}
-            className={`w-full py-2.5 border-2 font-semibold text-sm rounded-lg md:rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-              calendarAdded
-                ? 'border-green-400 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10'
-                : 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20'
-            }`}
+            className={`w-full py-2.5 border-2 font-semibold text-sm rounded-lg md:rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${calendarAdded
+              ? 'border-green-400 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10'
+              : 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20'
+              }`}
           >
             <CalendarIcon />
             {calendarAdded ? 'Google Calendar Opened ✓' : 'Add Class to Google Calendar'}
@@ -360,7 +359,7 @@ const LiveCourseDetail = () => {
           disabled
           className="w-full py-3 md:py-4 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center"
         >
-          Cohort Full
+          Course Full
         </button>
       );
     }
@@ -369,11 +368,10 @@ const LiveCourseDetail = () => {
       <button
         onClick={handleEnrollButton}
         disabled={enrolling}
-        className={`w-full py-3 md:py-4 font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all flex items-center justify-center ${
-          enrolling
-            ? 'bg-gray-400 text-white cursor-not-allowed'
-            : 'bg-primary-600 hover:bg-primary-700 text-white shadow-xl shadow-primary-600/30 active:scale-[0.98]'
-        }`}
+        className={`w-full py-3 md:py-4 font-bold text-sm md:text-base rounded-lg md:rounded-xl transition-all flex items-center justify-center ${enrolling
+          ? 'bg-gray-400 text-white cursor-not-allowed'
+          : 'bg-primary-600 hover:bg-primary-700 text-white shadow-xl shadow-primary-600/30 active:scale-[0.98]'
+          }`}
       >
         {enrolling ? (
           <>
@@ -703,9 +701,8 @@ const LiveCourseDetail = () => {
                   </div>
                   <div className="col-span-2">
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Availability</span>
-                    <span className={`text-sm md:text-base font-bold flex items-center ${
-                      isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'
-                    }`}>
+                    <span className={`text-sm md:text-base font-bold flex items-center ${isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'
+                      }`}>
                       {isFull ? 'No seats left' : `${course.maxStudents - course.currentEnrollments} left`}
                     </span>
                   </div>
@@ -720,7 +717,7 @@ const LiveCourseDetail = () => {
                   </div>
                   <div className="flex items-start text-xs md:text-sm">
                     <FiUsers className="mt-0.5 mr-2 md:mr-3 text-gray-400 shrink-0" size={14} />
-                    <span className="text-gray-700 dark:text-gray-300">Exclusive Cohort Community</span>
+                    <span className="text-gray-700 dark:text-gray-300">Exclusive Live Course Community</span>
                   </div>
                   <div className="flex items-start text-xs md:text-sm">
                     <FiFileText className="mt-0.5 mr-2 md:mr-3 text-gray-400 shrink-0" size={14} />

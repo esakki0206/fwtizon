@@ -192,7 +192,7 @@ const Home = () => {
                 <span className="w-2 h-2 rounded-full bg-red-500 mr-2 animate-pulse"></span>
                 LIVE COURSES
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-3">Interactive Live Cohorts</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-3">Interactive Live Courses</h2>
               <p className="text-gray-600 dark:text-gray-400 text-base">Join small batches of ambitious peers and learn directly from industry experts in real-time.</p>
             </motion.div>
             <motion.div

@@ -171,8 +171,8 @@ const MyCertificates = () => {
               key={key}
               onClick={() => setActiveTab(key)}
               className={`relative flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 md:px-6 py-2.5 text-sm font-bold rounded-lg md:rounded-xl transition-all duration-200 ${activeTab === key
-                  ? 'text-white shadow-md'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                ? 'text-white shadow-md'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                 }`}
             >
               {activeTab === key && (
@@ -186,8 +186,8 @@ const MyCertificates = () => {
                 <Icon size={15} />
                 <span className="hidden xs:inline">{label}</span>
                 <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${activeTab === key
-                    ? 'bg-white/20 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
                   }`}>{count}</span>
               </span>
             </button>
@@ -299,7 +299,7 @@ const CertificateCard = ({ cert }) => {
         {/* Top badges */}
         <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
           <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg backdrop-blur-sm text-white shadow-sm ${isCohort ? 'bg-purple-600/90' : 'bg-primary-600/90'}`}>
-            {isCohort ? '🎓 Cohort' : '📚 Course'}
+            {isCohort ? '🎓 Live Course' : '📚 Course'}
           </span>
           <span className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-black/30 backdrop-blur-sm px-2 py-1 rounded-lg">
             <FiCheckCircle size={10} /> Issued

@@ -16,8 +16,8 @@ const emptyQuestion = () => ({ text: '', type: 'rating', required: true, options
 
 const StatusBadge = ({ isUnlocked, isActive }) => {
   if (!isActive) return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>;
-  if (isUnlocked) return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center w-max"><FiUnlock className="mr-1" size={10}/>Unlocked</span>;
-  return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center w-max"><FiLock className="mr-1" size={10}/>Locked</span>;
+  if (isUnlocked) return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center w-max"><FiUnlock className="mr-1" size={10} />Unlocked</span>;
+  return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center w-max"><FiLock className="mr-1" size={10} />Locked</span>;
 };
 
 const FeedbackManager = () => {
@@ -167,7 +167,7 @@ const FeedbackManager = () => {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Feedback Forms</h2><p className="text-sm text-gray-500 mt-0.5">Manage feedback forms for live cohort courses</p></div>
+        <div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Feedback Forms</h2><p className="text-sm text-gray-500 mt-0.5">Manage feedback forms for live courses</p></div>
         <Button className="font-bold flex items-center" onClick={openCreateModal}><FiPlus className="mr-2" /> Create Form</Button>
       </div>
 
@@ -193,9 +193,9 @@ const FeedbackManager = () => {
                   </div>
                   <p className="text-xs text-gray-500 mb-2">Course: <span className="font-semibold text-gray-700 dark:text-gray-300">{form.liveCourse?.title || 'Unknown'}</span></p>
                   <div className="flex items-center gap-4 text-xs text-gray-500">
-                    <span className="flex items-center"><FiUsers className="mr-1" size={12}/>{form.stats?.totalEnrolled || 0} enrolled</span>
-                    <span className="flex items-center"><FiCheckCircle className="mr-1" size={12}/>{form.stats?.totalSubmissions || 0} submitted</span>
-                    <span className="flex items-center"><FiClock className="mr-1" size={12}/>{form.stats?.totalPending || 0} pending</span>
+                    <span className="flex items-center"><FiUsers className="mr-1" size={12} />{form.stats?.totalEnrolled || 0} enrolled</span>
+                    <span className="flex items-center"><FiCheckCircle className="mr-1" size={12} />{form.stats?.totalSubmissions || 0} submitted</span>
+                    <span className="flex items-center"><FiClock className="mr-1" size={12} />{form.stats?.totalPending || 0} pending</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -220,7 +220,7 @@ const FeedbackManager = () => {
               className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 dark:border-gray-800 shadow-2xl">
               <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
                 <h2 className="text-lg font-bold">{editingForm ? 'Edit Feedback Form' : 'Create Feedback Form'}</h2>
-                <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22}/></button>
+                <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22} /></button>
               </div>
               <div className="p-6 overflow-y-auto flex-1 space-y-5">
                 {!editingForm && (
@@ -236,23 +236,23 @@ const FeedbackManager = () => {
                 <div>
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Form Title *</label>
                   <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Course Feedback Survey"/>
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Course Feedback Survey" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Instructions</label>
                   <textarea value={formData.instructions} onChange={e => setFormData(p => ({ ...p, instructions: e.target.value }))} rows={2}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none resize-none" placeholder="Optional instructions for students..."/>
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none resize-none" placeholder="Optional instructions for students..." />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Unlock Date (optional)</label>
                     <input type="datetime-local" value={formData.unlockDate} onChange={e => setFormData(p => ({ ...p, unlockDate: e.target.value }))}
-                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"/>
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Submission Deadline (optional)</label>
                     <input type="datetime-local" value={formData.submissionDeadline} onChange={e => setFormData(p => ({ ...p, submissionDeadline: e.target.value }))}
-                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"/>
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
                   </div>
                 </div>
 
@@ -260,7 +260,7 @@ const FeedbackManager = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-bold text-gray-700 dark:text-gray-200">Questions *</label>
-                    <Button size="sm" variant="outline" onClick={addQuestion}><FiPlus className="mr-1" size={12}/>Add Question</Button>
+                    <Button size="sm" variant="outline" onClick={addQuestion}><FiPlus className="mr-1" size={12} />Add Question</Button>
                   </div>
                   <div className="space-y-3">
                     {formData.questions.map((q, idx) => (
@@ -269,14 +269,14 @@ const FeedbackManager = () => {
                           <span className="text-xs font-black text-gray-400 mt-2 shrink-0">Q{idx + 1}</span>
                           <div className="flex-1 space-y-2">
                             <input value={q.text} onChange={e => updateQuestion(idx, 'text', e.target.value)} placeholder="Question text..."
-                              className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"/>
+                              className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
                             <div className="flex flex-wrap gap-2 items-center">
                               <select value={q.type} onChange={e => updateQuestion(idx, 'type', e.target.value)}
                                 className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 outline-none">
                                 {QUESTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                               </select>
                               <label className="flex items-center text-xs text-gray-600 gap-1">
-                                <input type="checkbox" checked={q.required} onChange={e => updateQuestion(idx, 'required', e.target.checked)} className="rounded"/>
+                                <input type="checkbox" checked={q.required} onChange={e => updateQuestion(idx, 'required', e.target.checked)} className="rounded" />
                                 Required
                               </label>
                             </div>
@@ -286,8 +286,8 @@ const FeedbackManager = () => {
                                 {(q.options || []).map((opt, oIdx) => (
                                   <div key={oIdx} className="flex gap-2 items-center">
                                     <input value={opt} onChange={e => updateOption(idx, oIdx, e.target.value)} placeholder={`Option ${oIdx + 1}`}
-                                      className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs outline-none"/>
-                                    <button onClick={() => removeOption(idx, oIdx)} className="text-red-400 hover:text-red-600"><FiXCircle size={14}/></button>
+                                      className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs outline-none" />
+                                    <button onClick={() => removeOption(idx, oIdx)} className="text-red-400 hover:text-red-600"><FiXCircle size={14} /></button>
                                   </div>
                                 ))}
                                 <button onClick={() => addOption(idx)} className="text-xs text-primary-600 hover:underline font-medium">+ Add Option</button>
@@ -295,7 +295,7 @@ const FeedbackManager = () => {
                             )}
                           </div>
                           {formData.questions.length > 1 && (
-                            <button onClick={() => removeQuestion(idx)} className="text-red-400 hover:text-red-600 mt-1 shrink-0"><FiTrash2 size={14}/></button>
+                            <button onClick={() => removeQuestion(idx)} className="text-red-400 hover:text-red-600 mt-1 shrink-0"><FiTrash2 size={14} /></button>
                           )}
                         </div>
                       </div>
@@ -323,7 +323,7 @@ const FeedbackManager = () => {
                   <h2 className="text-lg font-bold">Responses — {responsesModal.title}</h2>
                   {responsesData && <p className="text-xs text-gray-500 mt-0.5">{responsesData.stats?.submitted || 0} submitted · {responsesData.stats?.pending || 0} pending</p>}
                 </div>
-                <button onClick={() => { setResponsesModal(null); setResponsesData(null); }} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22}/></button>
+                <button onClick={() => { setResponsesModal(null); setResponsesData(null); }} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22} /></button>
               </div>
               <div className="p-6 overflow-y-auto flex-1">
                 {loadingResponses ? (
@@ -391,7 +391,7 @@ const SubmissionCard = ({ sub, form, onReset }) => {
                 <p className="text-xs font-bold text-gray-500 mb-0.5">Q{r.questionIndex + 1}: {question?.text || 'Unknown'}</p>
                 <p className="text-gray-800 dark:text-gray-200">
                   {question?.type === 'rating' ? (
-                    <span className="flex items-center gap-0.5">{[1,2,3,4,5].map(s => <FiStar key={s} size={14} className={s <= Number(r.answer) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'} />)}</span>
+                    <span className="flex items-center gap-0.5">{[1, 2, 3, 4, 5].map(s => <FiStar key={s} size={14} className={s <= Number(r.answer) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'} />)}</span>
                   ) : String(r.answer)}
                 </p>
               </div>

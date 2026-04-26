@@ -170,7 +170,7 @@ const AdminDashboard = () => {
           compact
         />
         <StatCard
-          title="Live Cohorts"
+          title="Live Courses"
           value={analytics?.activeLiveCourses || 0}
           icon={<FiVideo size={20} />}
           gradient="rose"

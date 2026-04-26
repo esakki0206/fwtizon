@@ -1,5 +1,5 @@
-import Coupon from '../models/Coupon.js';
 import Course from '../models/Course.js';
+import LiveCourse from '../models/LiveCourse.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
@@ -154,9 +154,8 @@ export const listCoupons = async (req, res) => {
       filter.startDate = { $gt: now };
     }
 
-    const [coupons, total] = await Promise.all([
+    const [rawCoupons, total] = await Promise.all([
       Coupon.find(filter)
-        .populate('applicableCourses', 'title _id')
         .populate('createdBy', 'name email')
         .sort('-createdAt')
         .skip(skip)
@@ -164,6 +163,24 @@ export const listCoupons = async (req, res) => {
         .lean(),
       Coupon.countDocuments(filter),
     ]);
+
+    // Manually populate applicableCourses from both Course and LiveCourse
+    const courseIds = rawCoupons.flatMap((c) => c.applicableCourses || []);
+    const uniqueIds = [...new Set(courseIds.map((id) => id.toString()))];
+
+    const [courses, liveCourses] = await Promise.all([
+      Course.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+      LiveCourse.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+    ]);
+
+    const titleMap = {};
+    courses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Course)' }; });
+    liveCourses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Live)' }; });
+
+    const coupons = rawCoupons.map(c => ({
+      ...c,
+      applicableCourses: (c.applicableCourses || []).map(id => titleMap[id.toString()] || { _id: id, title: 'Unknown' })
+    }));
 
     const data = coupons.map((c) => {
       let effectiveStatus;
@@ -204,10 +221,28 @@ export const getCoupon = async (req, res) => {
     if (!isValidObjectId(id)) {
       return res.status(400).json({ success: false, message: 'Invalid coupon ID' });
     }
-    const coupon = await Coupon.findById(id)
-      .populate('applicableCourses', 'title _id')
-      .populate('createdBy', 'name email');
-    if (!coupon) return res.status(404).json({ success: false, message: 'Coupon not found' });
+    const rawCoupon = await Coupon.findById(id)
+      .populate('createdBy', 'name email')
+      .lean();
+    if (!rawCoupon) return res.status(404).json({ success: false, message: 'Coupon not found' });
+
+    const courseIds = rawCoupon.applicableCourses || [];
+    const uniqueIds = [...new Set(courseIds.map((cid) => cid.toString()))];
+
+    const [courses, liveCourses] = await Promise.all([
+      Course.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+      LiveCourse.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+    ]);
+
+    const titleMap = {};
+    courses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Course)' }; });
+    liveCourses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Live)' }; });
+
+    const coupon = {
+      ...rawCoupon,
+      applicableCourses: courseIds.map(cid => titleMap[cid.toString()] || { _id: cid, title: 'Unknown' })
+    };
+
     res.status(200).json({ success: true, data: coupon });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -378,9 +413,26 @@ export const updateCoupon = async (req, res) => {
 
     await coupon.save();
 
-    const populated = await Coupon.findById(id)
-      .populate('applicableCourses', 'title _id')
-      .populate('createdBy', 'name email');
+    const rawPopulated = await Coupon.findById(id)
+      .populate('createdBy', 'name email')
+      .lean();
+
+    const courseIds = rawPopulated.applicableCourses || [];
+    const uniqueIds = [...new Set(courseIds.map((cid) => cid.toString()))];
+
+    const [courses, liveCourses] = await Promise.all([
+      Course.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+      LiveCourse.find({ _id: { $in: uniqueIds } }, 'title _id').lean(),
+    ]);
+
+    const titleMap = {};
+    courses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Course)' }; });
+    liveCourses.forEach((c) => { titleMap[c._id.toString()] = { _id: c._id, title: c.title + ' (Live)' }; });
+
+    const populated = {
+      ...rawPopulated,
+      applicableCourses: courseIds.map(cid => titleMap[cid.toString()] || { _id: cid, title: 'Unknown' })
+    };
 
     res.status(200).json({ success: true, data: populated });
   } catch (error) {

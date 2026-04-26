@@ -40,6 +40,23 @@ const DEFAULT_FORM = {
   applicableCourses: [],
 };
 
+const Field = ({ label, error, children }) => (
+  <div>
+    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+    {children}
+    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+  </div>
+);
+
+const StatusBadge = ({ status }) => {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.inactive;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
+      {cfg.label}
+    </span>
+  );
+};
+
 // ── Coupon Form Modal ─────────────────────────────────────────────────────────
 const CouponModal = ({ isOpen, onClose, initialData, courses, onSaved }) => {
   const isEdit = Boolean(initialData?._id);
@@ -130,14 +147,6 @@ const CouponModal = ({ isOpen, onClose, initialData, courses, onSaved }) => {
       setSaving(false);
     }
   };
-
-  const Field = ({ label, error, children }) => (
-    <div>
-      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">{label}</label>
-      {children}
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
-  );
 
   const inputCls = (err) =>
     `w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition ${
@@ -412,8 +421,13 @@ const CouponManager = () => {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const res = await axios.get('/api/admin/courses', { params: { limit: 100 } });
-      setCourses(res.data.data || []);
+      const [coursesRes, liveCoursesRes] = await Promise.all([
+        axios.get('/api/admin/courses', { params: { limit: 100 } }).catch(() => ({ data: { data: [] } })),
+        axios.get('/api/admin/live-courses', { params: { limit: 100 } }).catch(() => ({ data: { data: [] } }))
+      ]);
+      const regularCourses = (coursesRes.data?.data || []).map(c => ({ ...c, title: c.title + ' (Course)' }));
+      const liveCourses = (liveCoursesRes.data?.data || []).map(c => ({ ...c, title: c.title + ' (Live)' }));
+      setCourses([...regularCourses, ...liveCourses]);
     } catch {
       // Non-fatal
     }
@@ -460,15 +474,6 @@ const CouponManager = () => {
 
   const openCreate = () => { setEditingCoupon(null); setModalOpen(true); };
   const openEdit = (c) => { setEditingCoupon(c); setModalOpen(true); };
-
-  const StatusBadge = ({ status }) => {
-    const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.inactive;
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
-        {cfg.label}
-      </span>
-    );
-  };
 
   return (
     <div className="space-y-6">

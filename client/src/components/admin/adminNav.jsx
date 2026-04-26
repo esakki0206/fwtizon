@@ -10,6 +10,7 @@ import {
   FiPieChart,
   FiSettings,
   FiMessageSquare,
+  FiTag,
 } from 'react-icons/fi';
 
 /**
@@ -26,6 +27,7 @@ export const ADMIN_NAV_LINKS = [
   { name: 'Assignments', path: '/admin/assignments', icon: <FiFileText size={16} /> },
   { name: 'Certifications and Receipt', path: '/admin/certificates', icon: <FiAward size={16} /> },
   { name: 'Payments', path: '/admin/payments', icon: <FiDollarSign size={16} /> },
+  { name: 'Coupons', path: '/admin/coupons', icon: <FiTag size={16} /> },
   { name: 'Live Enrollments', path: '/admin/enrollments', icon: <FiUsers size={16} /> },
   { name: 'Announcements', path: '/admin/announcements', icon: <FiBell size={16} /> },
   { name: 'Feedback', path: '/admin/feedback', icon: <FiMessageSquare size={16} /> },

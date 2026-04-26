@@ -33,6 +33,9 @@ const CourseDetail = () => {
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [expandedModules, setExpandedModules] = useState({});
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -68,6 +71,29 @@ const CourseDetail = () => {
 
   const toggleModule = (index) =>
     setExpandedModules((prev) => ({ ...prev, [index]: !prev[index] }));
+
+  // ── Coupon Logic ───────────────────────────────────────────────────────────
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) return;
+    setCouponLoading(true);
+    try {
+      const res = await axios.post('/api/coupons/validate', {
+        code: couponCodeInput.trim(),
+        courseId: course._id,
+      });
+      setAppliedCoupon(res.data.data);
+      toast.success(res.data.message);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Invalid coupon');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+  };
 
   // ── Razorpay checkout flow ────────────────────────────────────────────────
   const handleEnroll = async () => {
@@ -111,16 +137,48 @@ const CourseDetail = () => {
       }
 
       // 2. Create order on backend — amount comes from DB, not frontend
-      const orderRes = await axios.post('/api/enroll/create-order', { courseId: course._id });
+      const orderRes = await axios.post('/api/enroll/create-order', {
+        courseId: course._id,
+        couponCode: appliedCoupon?.code,
+      });
       if (!orderRes.data.success) {
         toast.error(orderRes.data.message || 'Failed to initiate payment');
         setEnrolling(false);
         return;
       }
 
-      const { id: orderId, amount, key_id: keyId } = orderRes.data.data;
+      const { id: orderId, amount, key_id: keyId, is_free } = orderRes.data.data;
 
-      // 3. Open Razorpay checkout modal
+      // 3. Handle Free Course / 100% Coupon Mock Order
+      if (is_free || orderId.startsWith('order_mock_')) {
+        try {
+          const verifyRes = await axios.post('/api/enroll/verify-payment', {
+            razorpay_order_id: orderId,
+            razorpay_payment_id: `mock_pay_${Date.now()}`,
+            razorpay_signature: 'mock_signature',
+            courseId: course._id,
+            fullName: user.name || '',
+            email: user.email || '',
+            couponCode: appliedCoupon?.code,
+          });
+
+          if (verifyRes.data.success) {
+            toast.success('🎉 Enrolled successfully!');
+            setIsEnrolled(true);
+            setEnrolling(false);
+            setTimeout(() => navigate(`/learn/${course.slug || course._id}`), 1200);
+          } else {
+            toast.error('Payment verification failed.');
+            setEnrolling(false);
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Verification failed');
+          setEnrolling(false);
+        }
+        return;
+      }
+
+      // 4. Open Razorpay checkout modal
       const options = {
         key: keyId,
         amount,                             // in paise — as returned by backend
@@ -144,6 +202,7 @@ const CourseDetail = () => {
               courseId: course._id,
               fullName: user.name || '',
               email: user.email || '',
+              couponCode: appliedCoupon?.code,
             });
 
             if (verifyRes.data.success) {
@@ -441,13 +500,66 @@ const CourseDetail = () => {
               </div>
 
               <div className="p-6">
-                {/* Price — always from course object, never hardcoded */}
-                <span className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-                  ₹{course.price}
-                </span>
-                <div className="text-xs font-bold text-green-500 uppercase tracking-widest mb-6">
-                  One-time payment
-                </div>
+                {/* Price */}
+                {appliedCoupon ? (
+                  <div className="mb-4">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+                        ₹{appliedCoupon.finalPrice}
+                      </span>
+                      <span className="text-xl text-gray-400 line-through">₹{course.price}</span>
+                    </div>
+                    <div className="text-xs font-bold text-green-500 uppercase tracking-widest mt-1">
+                      {appliedCoupon.discountPercentage}% OFF APPLIED
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-4">
+                    <span className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+                      ₹{course.price}
+                    </span>
+                    <div className="text-xs font-bold text-green-500 uppercase tracking-widest mt-1">
+                      One-time payment
+                    </div>
+                  </div>
+                )}
+
+                {/* Coupon Input */}
+                {!isEnrolled && (
+                  <div className="mb-6">
+                    {appliedCoupon ? (
+                      <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg">
+                        <div className="flex items-center text-green-700 dark:text-green-400 text-sm font-semibold">
+                          <FiCheck className="mr-2" />
+                          {appliedCoupon.code} applied!
+                        </div>
+                        <button
+                          onClick={removeCoupon}
+                          className="text-gray-500 hover:text-red-500 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Coupon code"
+                          value={couponCodeInput}
+                          onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                          className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                        <Button
+                          onClick={handleApplyCoupon}
+                          disabled={!couponCodeInput.trim() || couponLoading}
+                          className="bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                        >
+                          {couponLoading ? '...' : 'Apply'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {enrollmentLoading ? (
                   <Button
@@ -475,7 +587,7 @@ const CourseDetail = () => {
                     size="lg"
                     className="w-full h-12 rounded-xl font-bold text-sm shadow-lg shadow-primary-600/25 transition-all active:scale-[0.98] mb-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {enrolling ? 'Processing…' : `Enroll Now — ₹${course.price}`}
+                    {enrolling ? 'Processing…' : `Enroll Now — ₹${appliedCoupon ? appliedCoupon.finalPrice : course.price}`}
                   </Button>
                 )}
 

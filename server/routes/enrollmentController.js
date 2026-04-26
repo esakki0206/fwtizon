@@ -9,6 +9,8 @@ import Receipt from '../models/Receipt.js';
 import Counter from '../models/Counter.js';
 import CohortApplication from '../models/CohortApplication.js';
 import Module from '../models/Module.js';
+import Coupon from '../models/Coupon.js';
+import { validateCouponForCourse } from './couponController.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { generateReceiptPDF } from '../utils/generateReceiptPDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
@@ -17,7 +19,6 @@ import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
 // ── Razorpay Configuration ──────────────────────────────────────────────────
-
 const isDummyKey = () => {
   const keyId = process.env.RAZORPAY_KEY_ID || '';
   return (
@@ -40,21 +41,46 @@ const getRazorpay = () => {
   return _razorpay;
 };
 
+// ── Admin Bypass Check ───────────────────────────────────────────────────────
+/**
+ * @desc  Check (server-side only) whether the authenticated user qualifies
+ *        for the admin bypass flow. Never trust the frontend for this.
+ * @route GET /api/enroll/bypass-check
+ * @access Private
+ */
+export const checkBypassStatus = async (req, res) => {
+  try {
+    if (!req.user?.email) {
+      return res.status(200).json({ success: true, isBypass: false });
+    }
+
+    const bypassEmail = process.env.ADMIN_BYPASS_EMAIL;
+    const isBypass =
+      Boolean(bypassEmail && req.user.email === bypassEmail) ||
+      req.user.role === 'admin';
+
+    return res.status(200).json({ success: true, isBypass });
+  } catch (error) {
+    console.error('Bypass check error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ── Create Razorpay Order ───────────────────────────────────────────────────
 /**
- * @desc  Create a Razorpay order using price fetched from DB (never from frontend).
- *        Returns key_id so the frontend can init the checkout modal.
+ * @desc  Create a Razorpay order.
+ *        - Price ALWAYS comes from DB.
+ *        - Coupon discount is validated server-side if couponCode is provided.
+ *        - Returns key_id so frontend can init the checkout modal.
  * @route POST /api/enroll/create-order
  */
 export const createOrder = async (req, res) => {
   try {
-    const { courseId, liveCourseId } = req.body;
+    const { courseId, liveCourseId, couponCode } = req.body;
 
     if (!courseId && !liveCourseId) {
       return res.status(400).json({ success: false, message: 'courseId or liveCourseId is required' });
     }
-
-    // Validate ObjectId format to prevent CastError crashes
     if (courseId && !isValidObjectId(courseId)) {
       return res.status(400).json({ success: false, message: 'Invalid courseId format' });
     }
@@ -95,20 +121,41 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Already enrolled in this course' });
     }
 
-    // Amount ALWAYS comes from DB — never trust the frontend
-    const amountPaise = Math.round(targetCourse.price * 100); // Razorpay works in paise
+    // ── Price from DB (never trust frontend) ──
+    const originalPrice = targetCourse.price;
+    let finalPrice = originalPrice;
+    let discountAmount = 0;
+    let appliedCouponCode = null;
+
+    // ── Coupon validation ──
+    if (couponCode) {
+      const targetId = courseId || liveCourseId;
+      const couponResult = await validateCouponForCourse(couponCode, targetId, originalPrice);
+      if (!couponResult.valid) {
+        return res.status(400).json({ success: false, message: `Coupon error: ${couponResult.message}` });
+      }
+      finalPrice = couponResult.finalPrice;
+      discountAmount = couponResult.discountAmount;
+      appliedCouponCode = couponResult.coupon.code;
+    }
+
+    const amountPaise = Math.round(finalPrice * 100);
 
     let order;
 
-    if (isDummyKey()) {
-      // ── Mock mode (no real Razorpay keys configured) ──
+    if (isDummyKey() || amountPaise === 0) {
+      // ── Mock mode OR free (100% discount) ──
       order = {
         id: `order_mock_${Date.now()}`,
         amount: amountPaise,
         currency: 'INR',
         status: 'created',
       };
-      console.log('[MOCK] Created mock Razorpay order:', order.id);
+      if (isDummyKey()) {
+        console.log('[MOCK] Created mock Razorpay order:', order.id);
+      } else {
+        console.log('[FREE] 100% coupon applied, skipping Razorpay:', order.id);
+      }
     } else {
       const razorpay = getRazorpay();
       order = await razorpay.orders.create({
@@ -119,20 +166,25 @@ export const createOrder = async (req, res) => {
           userId: req.user.id,
           courseId: courseId || '',
           liveCourseId: liveCourseId || '',
+          couponCode: appliedCouponCode || '',
+          originalPrice: String(originalPrice),
+          discountAmount: String(discountAmount),
         },
       });
     }
 
-    // Return key_id so frontend can open Razorpay checkout — secret is NEVER sent
     res.status(200).json({
       success: true,
       data: {
         ...order,
-        // key_id is the public key — safe to expose to frontend
         key_id: isDummyKey() ? 'mock_key' : process.env.RAZORPAY_KEY_ID,
-        // Convey human-readable amount back for UI display
-        amount_display: targetCourse.price,
+        amount_display: finalPrice,
+        original_amount: originalPrice,
+        discount_amount: discountAmount,
+        coupon_applied: appliedCouponCode,
         currency: 'INR',
+        // Flag: if amount is 0 due to 100% coupon, frontend can auto-enroll
+        is_free: amountPaise === 0,
       },
     });
   } catch (error) {
@@ -156,7 +208,10 @@ const enrollUserInCourse = async ({
   experienceLevel,
   paymentId,
   orderId,
-  isAdminBypass = false
+  isAdminBypass = false,
+  couponCode = null,
+  discountAmount = 0,
+  originalAmount = null,
 }) => {
   // 1. Prevent duplicate enrollments
   const existQuery = { user: user.id, status: { $in: ['active', 'completed'] } };
@@ -178,6 +233,8 @@ const enrollUserInCourse = async ({
     email: email || user.email || '',
     phone,
     message,
+    couponCode: couponCode || null,
+    discountAmount: discountAmount || 0,
   };
 
   if (liveCourseId) {
@@ -188,25 +245,35 @@ const enrollUserInCourse = async ({
     }
     enrollData.liveCourse = liveCourseId;
     enrollData.amount = isAdminBypass ? 0 : enrolledItem.price;
+    enrollData.originalAmount = originalAmount ?? enrolledItem.price;
   } else if (courseId) {
     enrolledItem = await Course.findById(courseId);
     if (!enrolledItem) throw new Error('Course not found');
     enrollData.course = courseId;
-    enrollData.amount = isAdminBypass ? 0 : enrolledItem.price;
+    const rawPrice = enrolledItem.price;
+    enrollData.amount = isAdminBypass ? 0 : (rawPrice - (discountAmount || 0));
+    enrollData.originalAmount = originalAmount ?? rawPrice;
   }
 
   if (!enrolledItem) throw new Error('Enrollment failed — course data missing');
 
-  // 3. Payment Integrity Check (Amount Verification)
-  // ONLY for real payments, skipped for dummy keys and admin bypass
-  if (!isAdminBypass && !isDummyKey()) {
+  // 3. Payment Integrity Check (real payments only)
+  if (!isAdminBypass && !isDummyKey() && paymentId && !paymentId.startsWith('mock_')) {
     try {
       const razorpay = getRazorpay();
       const payment = await razorpay.payments.fetch(paymentId);
-      const expectedAmountPaise = Math.round(enrolledItem.price * 100);
-      
-      if (payment.amount !== expectedAmountPaise || payment.status !== 'captured' || payment.currency !== 'INR') {
-        console.warn(`[SECURITY] Payment mismatch. Expected: ${expectedAmountPaise}, Got: ${payment.amount}`);
+      // Expected = final discounted price in paise
+      const finalAmountRs = enrollData.amount;
+      const expectedAmountPaise = Math.round(finalAmountRs * 100);
+
+      if (
+        payment.amount !== expectedAmountPaise ||
+        payment.status !== 'captured' ||
+        payment.currency !== 'INR'
+      ) {
+        console.warn(
+          `[SECURITY] Payment mismatch. Expected: ${expectedAmountPaise} paise (₹${finalAmountRs}), Got: ${payment.amount} paise. Status: ${payment.status}`
+        );
         throw new Error('Payment verification failed — invalid amount or status');
       }
     } catch (fetchErr) {
@@ -225,7 +292,20 @@ const enrollUserInCourse = async ({
     await enrolledItem.save();
   }
 
-  // 5. Create Enrollment Record
+  // 5. Increment Coupon Usage (atomic)
+  if (couponCode) {
+    try {
+      await Coupon.findOneAndUpdate(
+        { code: couponCode.toUpperCase() },
+        { $inc: { usedCount: 1 } }
+      );
+    } catch (couponErr) {
+      console.error('Failed to increment coupon usage count:', couponErr.message);
+      // Non-fatal — enrollment still succeeds
+    }
+  }
+
+  // 6. Create Enrollment Record
   let enrollment;
   try {
     enrollment = await Enrollment.create(enrollData);
@@ -240,7 +320,7 @@ const enrollUserInCourse = async ({
     throw createErr;
   }
 
-  // 6. Cohort Application for Live Course
+  // 7. Cohort Application for Live Course
   if (liveCourseId && gender && whatsappNumber) {
     try {
       await CohortApplication.create({
@@ -253,14 +333,14 @@ const enrollUserInCourse = async ({
         gender,
         courseDepartment,
         experienceLevel,
-        status: 'Enrolled'
+        status: 'Enrolled',
       });
     } catch (appErr) {
       console.error('Failed to create cohort application:', appErr);
     }
   }
 
-  // 7. Auto-generate Receipt
+  // 8. Auto-generate Receipt
   try {
     const serialNumber = await Counter.getNextSequence('receipts');
     const now = new Date();
@@ -275,11 +355,11 @@ const enrollUserInCourse = async ({
       userName: fullName || user.name || 'Student',
       userEmail: email || user.email,
       courseName: enrolledItem.title,
-      amount: isAdminBypass ? 0 : enrolledItem.price,
+      amount: enrollData.amount,
       paymentId: paymentId || `bypass_${Date.now()}`,
       orderId: orderId || 'N/A',
       date: now,
-      status: 'SUCCESS'
+      status: 'SUCCESS',
     };
 
     const pdfBuffer = await generateReceiptPDF(receiptData);
@@ -298,13 +378,13 @@ const enrollUserInCourse = async ({
       userEmail: receiptData.userEmail,
       courseName: receiptData.courseName,
       fileUrl,
-      status: 'SUCCESS'
+      status: 'SUCCESS',
     });
   } catch (receiptError) {
     console.error('Failed to auto-generate receipt:', receiptError);
   }
 
-  // 8. Notification
+  // 9. Notification
   await Notification.create({
     user: user.id,
     type: 'payment',
@@ -312,12 +392,17 @@ const enrollUserInCourse = async ({
     link: courseId ? `/learn/${enrolledItem._id}` : '/dashboard',
   });
 
-  return { success: true, message: 'Payment verified and enrolled successfully', data: enrollment };
+  return {
+    success: true,
+    message: 'Enrolled successfully',
+    data: enrollment,
+  };
 };
 
 // ── Verify Payment and Enroll ───────────────────────────────────────────────
 /**
- * @desc  Verify Razorpay HMAC signature then enroll the user. Supports Admin Bypass.
+ * @desc  Verify Razorpay HMAC signature then enroll the user.
+ *        Supports admin bypass and coupon-discounted amounts.
  * @route POST /api/enroll/verify-payment
  */
 export const verifyPayment = async (req, res) => {
@@ -336,24 +421,49 @@ export const verifyPayment = async (req, res) => {
       whatsappNumber,
       courseDepartment,
       experienceLevel,
+      couponCode,
     } = req.body;
 
-    if (!req.user?.id) return res.status(401).json({ success: false, message: 'User authentication failed' });
-    if (!courseId && !liveCourseId) return res.status(400).json({ success: false, message: 'Course ID missing' });
-    if (courseId && !isValidObjectId(courseId)) return res.status(400).json({ success: false, message: 'Invalid courseId format' });
-    if (liveCourseId && !isValidObjectId(liveCourseId)) return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
+    if (!req.user?.id) {
+      return res.status(401).json({ success: false, message: 'User authentication failed' });
+    }
+    if (!courseId && !liveCourseId) {
+      return res.status(400).json({ success: false, message: 'Course ID missing' });
+    }
+    if (courseId && !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+    if (liveCourseId && !isValidObjectId(liveCourseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
+    }
 
-    // ── Admin Bypass Logic ──
+    // ── Admin Bypass — checked server-side ONLY ──────────────────────────
     const targetEmail = email || req.user.email;
     const bypassEmail = process.env.ADMIN_BYPASS_EMAIL;
-    const isAdminBypass = (bypassEmail && targetEmail === bypassEmail) || (req.user?.role === 'admin');
+    const isAdminBypass =
+      (Boolean(bypassEmail) && targetEmail === bypassEmail) ||
+      req.user?.role === 'admin';
 
     if (isAdminBypass) {
       try {
         const result = await enrollUserInCourse({
-          user: req.user, courseId, liveCourseId, fullName, email: targetEmail, phone, message,
-          gender, whatsappNumber, courseDepartment, experienceLevel,
-          paymentId: `bypass_pay_${Date.now()}`, orderId: `bypass_order_${Date.now()}`, isAdminBypass: true
+          user: req.user,
+          courseId,
+          liveCourseId,
+          fullName,
+          email: targetEmail,
+          phone,
+          message,
+          gender,
+          whatsappNumber,
+          courseDepartment,
+          experienceLevel,
+          paymentId: `bypass_pay_${Date.now()}`,
+          orderId: `bypass_order_${Date.now()}`,
+          isAdminBypass: true,
+          couponCode: null,       // bypasses pay full coupons don't apply
+          discountAmount: 0,
+          originalAmount: null,
         });
         return res.status(200).json({ ...result, bypass: true });
       } catch (err) {
@@ -362,12 +472,43 @@ export const verifyPayment = async (req, res) => {
       }
     }
 
-    // ── Signature Verification ──
+    // ── Re-validate coupon server-side ───────────────────────────────────
+    let serverDiscountAmount = 0;
+    let serverFinalPrice = null;
+    let validatedCouponCode = null;
+
+    if (couponCode) {
+      const targetId = courseId || liveCourseId;
+      let targetPrice = null;
+      if (courseId) {
+        const course = await Course.findById(courseId).select('price');
+        if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+        targetPrice = course.price;
+      } else if (liveCourseId) {
+        const liveCourse = await LiveCourse.findById(liveCourseId).select('price');
+        if (!liveCourse) return res.status(404).json({ success: false, message: 'Live Course not found' });
+        targetPrice = liveCourse.price;
+      }
+
+      const couponResult = await validateCouponForCourse(couponCode, targetId, targetPrice);
+      if (!couponResult.valid) {
+        // If coupon is no longer valid (e.g. race condition), reject the payment
+        return res.status(400).json({ success: false, message: `Coupon validation failed: ${couponResult.message}` });
+      }
+      serverDiscountAmount = couponResult.discountAmount;
+      serverFinalPrice = couponResult.finalPrice;
+      validatedCouponCode = couponResult.coupon.code;
+    }
+
+    // ── Signature Verification ───────────────────────────────────────────
+    // If final price is 0 (100% coupon), skip Razorpay verification
+    const isFreeEnrollment = serverFinalPrice !== null && serverFinalPrice === 0;
     let isAuthentic = false;
 
-    if (isDummyKey()) {
+    if (isDummyKey() || isFreeEnrollment) {
       isAuthentic = true;
-      console.log('[MOCK] Auto-approving payment verification');
+      if (isDummyKey()) console.log('[MOCK] Auto-approving payment verification');
+      if (isFreeEnrollment) console.log('[FREE] 100% coupon — skipping Razorpay signature check');
     } else {
       if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
         return res.status(400).json({ success: false, message: 'Missing payment verification fields' });
@@ -379,29 +520,53 @@ export const verifyPayment = async (req, res) => {
         .digest('hex');
 
       try {
-        isAuthentic = crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(razorpay_signature, 'hex'));
+        isAuthentic = crypto.timingSafeEqual(
+          Buffer.from(expectedSignature, 'hex'),
+          Buffer.from(razorpay_signature, 'hex')
+        );
       } catch (_err) {
         isAuthentic = false;
       }
     }
 
     if (!isAuthentic) {
-      console.warn(`[SECURITY] Invalid payment signature for user ${req.user.id}, order ${razorpay_order_id}`);
+      console.warn(
+        `[SECURITY] Invalid payment signature for user ${req.user.id}, order ${razorpay_order_id}`
+      );
       return res.status(400).json({ success: false, message: 'Payment verification failed — invalid signature' });
     }
 
-    // ── Regular Enrollment ──
+    // ── Regular Enrollment ───────────────────────────────────────────────
     try {
       const result = await enrollUserInCourse({
-        user: req.user, courseId, liveCourseId, fullName, email, phone, message,
-        gender, whatsappNumber, courseDepartment, experienceLevel,
-        paymentId: razorpay_payment_id || `mock_pay_${Date.now()}`,
-        orderId: razorpay_order_id || 'N/A', isAdminBypass: false
+        user: req.user,
+        courseId,
+        liveCourseId,
+        fullName,
+        email,
+        phone,
+        message,
+        gender,
+        whatsappNumber,
+        courseDepartment,
+        experienceLevel,
+        paymentId: isFreeEnrollment
+          ? `free_coupon_${Date.now()}`
+          : razorpay_payment_id || `mock_pay_${Date.now()}`,
+        orderId: razorpay_order_id || 'N/A',
+        isAdminBypass: false,
+        couponCode: validatedCouponCode,
+        discountAmount: serverDiscountAmount,
+        originalAmount: null,     // enrollUserInCourse will derive from DB
       });
       return res.status(200).json(result);
     } catch (err) {
       console.error('Regular Enrollment Error:', err);
-      if (err.message.includes('Payment verification failed') || err.message.includes('not found') || err.message.includes('full')) {
+      if (
+        err.message.includes('Payment verification failed') ||
+        err.message.includes('not found') ||
+        err.message.includes('full')
+      ) {
         return res.status(400).json({ success: false, message: err.message });
       }
       return res.status(500).json({ success: false, message: err.message || 'Server error' });
@@ -421,8 +586,6 @@ export const razorpayWebhook = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Webhook acknowledged (no-op)' });
     }
 
-    // req.body is a raw Buffer when mounted with express.raw() in server.js
-    // This preserves byte-exact body for reliable HMAC verification
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
 
     const expectedSignature = crypto
@@ -430,7 +593,6 @@ export const razorpayWebhook = async (req, res) => {
       .update(rawBody)
       .digest('hex');
 
-    // Timing-safe comparison
     let isValid = false;
     try {
       isValid = crypto.timingSafeEqual(
@@ -446,7 +608,6 @@ export const razorpayWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
     }
 
-    // Parse body if it came as raw buffer
     const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
 
     if (body.event === 'payment.captured') {
@@ -503,7 +664,6 @@ export const updateProgress = async (req, res) => {
     if (!enrollment.progress.completedLessons.includes(lessonId)) {
       enrollment.progress.completedLessons.push(lessonId);
 
-      // Recalculate progress percentage
       try {
         const modules = await Module.find({ course: courseId });
         const totalLessons = modules.reduce((total, mod) => total + (mod.lessons?.length || 0), 0);
@@ -517,7 +677,6 @@ export const updateProgress = async (req, res) => {
             enrollment.completedAt = new Date();
             enrollment.progress.percentComplete = 100;
 
-            // Auto-generate certificate
             try {
               const serialNumber = await Counter.getNextSequence('certificates');
               const paddedSerial = String(serialNumber).padStart(4, '0');
@@ -531,11 +690,15 @@ export const updateProgress = async (req, res) => {
                 areaOfExpertise: 'Specialized Training',
                 completionDate: enrollment.completedAt,
                 certificateId,
-                serialNumber
+                serialNumber,
               };
 
               const pdfBuffer = await generateCertificatePDF(pdfData);
-              const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${req.user.id}`, 'fwtion/certificates');
+              const fileUrl = await uploadPdfToCloudinary(
+                pdfBuffer,
+                `${certificateId}-${req.user.id}`,
+                'fwtion/certificates'
+              );
 
               await Certificate.create({
                 certificateId,
@@ -550,7 +713,7 @@ export const updateProgress = async (req, res) => {
                 completionDate: pdfData.completionDate,
                 serialNumber,
                 fileUrl,
-                enrollment: enrollment._id
+                enrollment: enrollment._id,
               });
             } catch (certError) {
               console.error('Failed to auto-generate certificate:', certError);
@@ -570,10 +733,9 @@ export const updateProgress = async (req, res) => {
   }
 };
 
-// ── Check Enrollment Status (lightweight) ───────────────────────────────────
+// ── Check Enrollment Status ─────────────────────────────────────────────────
 /**
  * @desc  Check if the authenticated user is enrolled in a specific course.
- *        Returns { enrolled: true/false } — much cheaper than fetching all enrollments.
  * @route GET /api/enroll/status?courseId=...  OR  ?liveCourseId=...
  */
 export const checkEnrollmentStatus = async (req, res) => {
@@ -586,8 +748,6 @@ export const checkEnrollmentStatus = async (req, res) => {
         message: 'courseId or liveCourseId query parameter is required',
       });
     }
-
-    // Validate ObjectId format
     if (courseId && !isValidObjectId(courseId)) {
       return res.status(400).json({ success: false, message: 'Invalid courseId format' });
     }
@@ -604,10 +764,7 @@ export const checkEnrollmentStatus = async (req, res) => {
 
     const exists = await Enrollment.findOne(query).lean();
 
-    res.status(200).json({
-      success: true,
-      enrolled: !!exists,
-    });
+    res.status(200).json({ success: true, enrolled: !!exists });
   } catch (error) {
     console.error('CHECK ENROLLMENT STATUS ERROR:', error.message);
     res.status(500).json({ success: false, message: error.message });

@@ -40,14 +40,12 @@ const POS = {
     baselineAdjust: 2,
   },
 
-
-
   date: {
-    x: 2200,
-    y: 3298,
+    x: 2191,
+    y: 3300,
     width: 141,
     height: 41,
-    wipe: { x: 2198, y: 3292, width: 157, height: 54 },
+    wipe: { x: 2194, y: 3292, width: 158, height: 54 },
     baselineAdjust: 0.3,
   },
 
@@ -150,12 +148,56 @@ function drawSingleLine(doc, text, field, options) {
   doc.restore();
 }
 
-function formatCertDate(date) {
-  return new Date(date).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
+function fitMultiLineText(doc, text, boxWidth, boxHeight, maxSize, minSize, align) {
+  let size = maxSize;
+  while (size > minSize) {
+    doc.fontSize(size);
+    const height = doc.heightOfString(text, { width: boxWidth, align: align });
+    if (height <= boxHeight) {
+      break;
+    }
+    size -= 0.5;
+  }
+  return size;
+}
+
+function drawMultiLineText(doc, text, field, options) {
+  const {
+    font,
+    color,
+    maxSize,
+    minSize = maxSize,
+    align = 'center',
+    baselineAdjust = 0,
+  } = options;
+
+  const box = toPdfRect(field);
+
+  doc.save();
+  doc.font(font);
+
+  const fontSize = fitMultiLineText(doc, text, box.width, box.height, maxSize, minSize, align);
+  doc.fontSize(fontSize).fillColor(color);
+
+  const textHeight = doc.heightOfString(text, { width: box.width, align });
+
+  const drawY = box.y + Math.max(0, (box.height - textHeight) / 2) + baselineAdjust;
+  
+  doc.text(text, box.x, drawY, {
+    width: box.width,
+    align,
+    lineBreak: true,
   });
+
+  doc.restore();
+}
+
+function formatCertDate(date) {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 function getCertificateSerial(certificateId, serialNumber) {
@@ -202,7 +244,7 @@ export const generateCertificatePDF = (data) => {
       drawBackground(doc);
 
       whiteout(doc, POS.name.wipe);
-      drawSingleLine(doc, String(studentName).toUpperCase(), POS.name, {
+      drawMultiLineText(doc, String(studentName).toUpperCase(), POS.name, {
         font: 'Helvetica-Bold',
         color: COLOR_DARK,
         maxSize: 28,
@@ -212,11 +254,11 @@ export const generateCertificatePDF = (data) => {
       });
 
       whiteout(doc, POS.course.wipe);
-      drawSingleLine(doc, String(courseName), POS.course, {
+      drawMultiLineText(doc, String(courseName), POS.course, {
         font: 'Helvetica-Bold',
         color: COLOR_ORANGE,
-        maxSize: 28,
-        minSize: 10,
+        maxSize: 29,
+        minSize: 12,
         align: 'center',
         baselineAdjust: POS.course.baselineAdjust,
       });
@@ -227,8 +269,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, formatCertDate(completionDate), POS.date, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 11,
-        minSize: 6,
+        maxSize: 12,
+        minSize: 8.5,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });

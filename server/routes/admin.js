@@ -27,6 +27,14 @@ import {
   getFormResponses,
   resetSubmission,
 } from './feedbackController.js';
+import {
+  listCoupons,
+  getCoupon,
+  createCoupon,
+  updateCoupon,
+  toggleCoupon,
+  deleteCoupon,
+} from './couponController.js';
 
 const router = express.Router();
 
@@ -2030,5 +2038,15 @@ router.delete('/feedback-forms/:id', protect, authorize('admin'), deleteFeedback
 router.patch('/feedback-forms/:id/toggle', protect, authorize('admin'), toggleFeedbackForm);
 router.get('/feedback-forms/:id/responses', protect, authorize('admin'), getFormResponses);
 router.delete('/feedback-forms/:id/submissions/:subId/reset', protect, authorize('admin'), resetSubmission);
+
+// ==============================
+// COUPON MANAGEMENT
+// ==============================
+router.get('/coupons', protect, authorize('admin'), listCoupons);
+router.get('/coupons/:id', protect, authorize('admin'), getCoupon);
+router.post('/coupons', protect, authorize('admin'), createCoupon);
+router.put('/coupons/:id', protect, authorize('admin'), updateCoupon);
+router.patch('/coupons/:id/toggle', protect, authorize('admin'), toggleCoupon);
+router.delete('/coupons/:id', protect, authorize('admin'), deleteCoupon);
 
 export default router;

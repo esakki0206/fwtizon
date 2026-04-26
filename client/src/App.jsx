@@ -29,6 +29,7 @@ const Announcements = lazy(() => import('./pages/admin/Announcements'));
 const AssignmentManager = lazy(() => import('./pages/admin/AssignmentManager'));
 const AdminAnalytics = lazy(() => import('./pages/admin/AdminAnalytics'));
 const FeedbackManager = lazy(() => import('./pages/admin/FeedbackManager'));
+const CouponManager = lazy(() => import('./pages/admin/CouponManager'));
 const LiveCohorts = lazy(() => import('./pages/live/LiveCohorts'));
 const LiveCourseDetail = lazy(() => import('./pages/live/LiveCourseDetail'));
 const Profile = lazy(() => import('./pages/profile/Profile'));
@@ -88,6 +89,7 @@ function App() {
               <Route path="enrollments" element={<EnrollmentManager />} />
               <Route path="announcements" element={<Announcements />} />
               <Route path="feedback" element={<FeedbackManager />} />
+              <Route path="coupons" element={<CouponManager />} />
               <Route path="analytics" element={<AdminAnalytics />} />
               <Route path="settings" element={<div className="p-8 text-2xl font-bold">Platform Settings</div>} />
             </Route>

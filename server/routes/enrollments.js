@@ -5,15 +5,22 @@ import {
   getMyCourses,
   updateProgress,
   checkEnrollmentStatus,
+  checkBypassStatus,
 } from './enrollmentController.js';
 import { protect } from '../middleware/auth.js';
 import { paymentLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
+// Enrollment status & bypass check (lightweight, no heavy limiter)
 router.get('/status', protect, checkEnrollmentStatus);
+router.get('/bypass-check', protect, checkBypassStatus);
+
+// Payment routes (rate-limited)
 router.post('/create-order', protect, paymentLimiter, createOrder);
 router.post('/verify-payment', protect, paymentLimiter, verifyPayment);
+
+// User data routes
 router.get('/my-courses', protect, getMyCourses);
 router.put('/progress', protect, updateProgress);
 

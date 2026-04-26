@@ -32,6 +32,33 @@ const LiveCourseDetail = () => {
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
 
+  // ── Coupon Logic ───────────────────────────────────────────────────────────
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) return;
+    setCouponLoading(true);
+    try {
+      const res = await axios.post('/api/coupons/validate', {
+        code: couponCodeInput.trim(),
+        liveCourseId: courseId,
+      });
+      setAppliedCoupon(res.data.data);
+      toast.success(res.data.message);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Invalid coupon');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+  };
+
   // ── Application modal state ────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -196,15 +223,17 @@ const LiveCourseDetail = () => {
 
       const { data: orderData } = await axios.post('/api/enroll/create-order', {
         liveCourseId: course._id,
+        couponCode: appliedCoupon?.code,
       });
 
       const isMockOrder = orderData.data.id?.startsWith('order_mock_');
-      if (isMockOrder) {
+      if (isMockOrder || orderData.data.is_free) {
         await axios.post('/api/enroll/verify-payment', {
           razorpay_order_id: orderData.data.id,
           razorpay_payment_id: `mock_pay_${Date.now()}`,
           razorpay_signature: 'mock_signature',
           liveCourseId: course._id,
+          couponCode: appliedCoupon?.code,
           ...formData,
         });
         toast.success('Enrolled successfully!', { id: toastId });
@@ -241,6 +270,7 @@ const LiveCourseDetail = () => {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
               liveCourseId: course._id,
+              couponCode: appliedCoupon?.code,
               ...formData,
             });
             toast.success('Enrolled successfully!', { id: verifyingToast });
@@ -620,11 +650,25 @@ const LiveCourseDetail = () => {
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 md:mb-2">
                   Registration Fee
                 </span>
-                <div className="flex items-baseline mb-1.5 md:mb-2">
-                  <span className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
-                    ₹{course.price}
-                  </span>
-                </div>
+                {appliedCoupon ? (
+                  <div className="mb-2">
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
+                        ₹{appliedCoupon.finalPrice}
+                      </span>
+                      <span className="text-lg text-gray-400 line-through">₹{course.price}</span>
+                    </div>
+                    <div className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mt-1">
+                      {appliedCoupon.discountPercentage}% OFF APPLIED
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline mb-1.5 md:mb-2">
+                    <span className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
+                      ₹{course.price}
+                    </span>
+                  </div>
+                )}
                 <div className="text-xs md:text-sm font-medium text-green-600 dark:text-green-400 flex items-center">
                   <FiClock className="mr-1" size={14} /> Enrolling now
                 </div>
@@ -683,6 +727,42 @@ const LiveCourseDetail = () => {
                     <span className="text-gray-700 dark:text-gray-300">Hands-on Assignments &amp; Projects</span>
                   </div>
                 </div>
+
+                {!isEnrolled && !isFull && (
+                  <div className="mb-4">
+                    {appliedCoupon ? (
+                      <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg">
+                        <div className="flex items-center text-green-700 dark:text-green-400 text-sm font-semibold">
+                          <FiCheckCircle className="mr-2" />
+                          {appliedCoupon.code} applied!
+                        </div>
+                        <button
+                          onClick={removeCoupon}
+                          className="text-gray-500 hover:text-red-500 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Coupon code"
+                          value={couponCodeInput}
+                          onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                          className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                        <button
+                          onClick={handleApplyCoupon}
+                          disabled={!couponCodeInput.trim() || couponLoading}
+                          className="bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 transition"
+                        >
+                          {couponLoading ? '...' : 'Apply'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-2 md:pt-3">
                   {renderEnrollButton()}

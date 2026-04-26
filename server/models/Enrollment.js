@@ -54,6 +54,20 @@ const enrollmentSchema = new mongoose.Schema({
     sparse: true,
   },
   completedAt: Date,
+
+  // ── Coupon / discount tracking ────────────────────────────────────────
+  couponCode: {
+    type: String,
+    default: null,
+  },
+  originalAmount: {
+    type: Number,
+    default: null,
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+  },
 }, {
   timestamps: true,
 });

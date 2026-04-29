@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 const FONTS_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 const IMAGES_DIR = path.join(__dirname, '..', 'assets', 'images');
-const TEMPLATE = path.join(IMAGES_DIR, 'FWT iZON Certificate_page-0001.jpg');
+const TEMPLATE = path.join(IMAGES_DIR, 'FWT iZON Certificate_page-0001.png');
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -42,16 +42,16 @@ const POS = {
 
   date: {
     x: 2191,
-    y: 3300,
+    y: 3303,
     width: 141,
     height: 41,
-    wipe: { x: 2194, y: 3292, width: 158, height: 54 },
+    wipe: { x: 2192, y: 3292, width: 165, height: 54 },
     baselineAdjust: 0.3,
   },
 
   slNo: {
     x: 2195,
-    y: 3371,
+    y: 3374,
     width: 151,
     height: 24,
     wipe: { x: 2194, y: 3371, width: 162, height: 55 },
@@ -182,7 +182,7 @@ function drawMultiLineText(doc, text, field, options) {
   const textHeight = doc.heightOfString(text, { width: box.width, align });
 
   const drawY = box.y + Math.max(0, (box.height - textHeight) / 2) + baselineAdjust;
-  
+
   doc.text(text, box.x, drawY, {
     width: box.width,
     align,

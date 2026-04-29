@@ -4,6 +4,7 @@ import fwtLogoBlack from '../../assets/FwT - Logo - Black Tagline.png';
 import fwtLogoWhite from '../../assets/FwT - Logo - White Tagline.png';
 import startupIndiaLogo from '../../assets/startup-india-logo.png';
 import startupTnLogo from '../../assets/startup-tn-logo.png';
+import nascomLogo from '../../assets/nascom.jpeg';
 
 const Footer = () => {
   return (
@@ -37,6 +38,9 @@ const Footer = () => {
               </div>
               <div className="bg-white p-2 sm:p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-center shadow-sm dark:shadow-none hover:shadow-md transition-shadow">
                 <img src={startupTnLogo} alt="Startup TN" className="h-10 sm:h-12 w-auto object-contain" />
+              </div>
+              <div className="bg-white p-2 sm:p-3 rounded-xxl border border-gray-200 dark:border-gray-800 flex items-center justify-center shadow-sm dark:shadow-none hover:shadow-md transition-shadow">
+                <img src={nascomLogo} alt="NASSCOM" className="h-10 md:h-17 w-auto object-contain" />
               </div>
             </div>
           </div>

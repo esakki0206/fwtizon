@@ -332,7 +332,7 @@ export const getCourseFeedbackSummary = async (req, res) => {
     const toDate = parseDateFilter(to, 'end');
     const searchTerm = search && search.trim() ? search.trim() : null;
 
-    // ── Build filters for both models ──
+    // ── Build Filter Objects ──
     const reviewMatch = {};
     const subMatch = {};
 
@@ -340,14 +340,14 @@ export const getCourseFeedbackSummary = async (req, res) => {
       if (!isValidObjectId(courseId)) {
         return res.status(400).json({ success: false, message: 'Invalid course ID' });
       }
-      const oid = new mongoose.Types.ObjectId(courseId);
-      reviewMatch.course = oid;
-      subMatch.liveCourse = oid;
+      // When a specific ID is selected, we filter Review by 'course' 
+      // and FeedbackSubmission by 'liveCourse'. 
+      reviewMatch.course = courseId;
+      subMatch.liveCourse = courseId;
     }
 
     if (queryRating) {
       reviewMatch.rating = queryRating;
-      // For submissions, we'll filter after flattening
     }
 
     if (fromDate || toDate) {
@@ -360,10 +360,9 @@ export const getCourseFeedbackSummary = async (req, res) => {
 
     if (searchTerm) {
       reviewMatch.comment = { $regex: escapeRegex(searchTerm), $options: 'i' };
-      // For submissions, we'll filter after flattening
     }
 
-    // ── Fetch data from both sources ──
+    // ── Fetch Data Simultaneously ──
     const [reviews, submissions] = await Promise.all([
       Review.find(reviewMatch)
         .populate('user', 'name email avatar')
@@ -378,12 +377,12 @@ export const getCourseFeedbackSummary = async (req, res) => {
         .lean(),
     ]);
 
-    // ── Flatten Submissions ──
+    // ── Transform Submissions into Unified Feedback Format ──
     const flattenedSubmissions = submissions.map(sub => {
       const form = sub.feedbackForm;
       if (!form || !form.questions) return null;
 
-      // Identify rating and comment questions
+      // Map structured responses to a "rating" and a "comment"
       const ratingQIdx = form.questions.findIndex(q => q.type === 'rating');
       const commentQIdx = form.questions.findIndex(q => q.type === 'textarea' || q.type === 'text');
 
@@ -393,7 +392,7 @@ export const getCourseFeedbackSummary = async (req, res) => {
       const ratingVal = ratingRes ? Number(ratingRes.answer) : null;
       const commentVal = commentRes ? String(commentRes.answer) : '';
 
-      // Post-flattening filters
+      // Apply filters that couldn't be done at the DB level (Rating & Search)
       if (queryRating && ratingVal !== queryRating) return null;
       if (searchTerm && !new RegExp(escapeRegex(searchTerm), 'i').test(commentVal)) return null;
 
@@ -402,67 +401,58 @@ export const getCourseFeedbackSummary = async (req, res) => {
         rating: ratingVal,
         comment: commentVal,
         user: sub.user,
-        course: sub.liveCourse, // unified field name
+        course: sub.liveCourse || { title: 'Unknown Live Course' },
         createdAt: sub.createdAt,
         isSubmission: true,
         formTitle: form.title,
       };
     }).filter(Boolean);
 
-    // ── Merge and Sort ──
+    // ── Merge and Analyze ──
     const allFeedback = [
       ...reviews.map(r => ({ ...r, isSubmission: false })),
       ...flattenedSubmissions,
     ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    // ── Calculate Summary Stats ──
+    // Calculate Summary
     const totalReviews = allFeedback.length;
-    const feedbackWithRating = allFeedback.filter(f => f.rating !== null);
-    const sumRating = feedbackWithRating.reduce((acc, f) => acc + f.rating, 0);
-    const averageRating = feedbackWithRating.length ? sumRating / feedbackWithRating.length : 0;
+    const ratedFeedback = allFeedback.filter(f => f.rating !== null);
+    const averageRating = ratedFeedback.length 
+      ? ratedFeedback.reduce((acc, f) => acc + f.rating, 0) / ratedFeedback.length 
+      : 0;
     
-    const satisfiedCount = feedbackWithRating.filter(f => f.rating >= 4).length;
-    const satisfactionPercent = feedbackWithRating.length 
-      ? Math.round((satisfiedCount / feedbackWithRating.length) * 1000) / 10 
+    const satisfactionPercent = ratedFeedback.length 
+      ? Math.round((ratedFeedback.filter(f => f.rating >= 4).length / ratedFeedback.length) * 100) 
       : 0;
 
     // Distribution
-    const distribution = [5, 4, 3, 2, 1].map(star => ({
+    const ratingDistribution = [5, 4, 3, 2, 1].map(star => ({
       star,
-      count: feedbackWithRating.filter(f => f.rating === star).length,
+      count: ratedFeedback.filter(f => f.rating === star).length,
     }));
 
     // Pagination
     const currentPage = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
     const skip = (currentPage - 1) * pageSize;
-    const paginatedFeedback = allFeedback.slice(skip, skip + pageSize);
+    const recentFeedback = allFeedback.slice(skip, skip + pageSize);
 
-    // Course Summaries (optional top 10 list)
-    const courseStatsMap = new Map();
-    allFeedback.forEach(f => {
-      const c = f.course;
-      if (!c || !c._id) return;
-      const cid = c._id.toString();
-      if (!courseStatsMap.has(cid)) {
-        courseStatsMap.set(cid, { title: c.title, sum: 0, count: 0 });
-      }
-      if (f.rating !== null) {
-        const stats = courseStatsMap.get(cid);
-        stats.sum += f.rating;
-        stats.count += 1;
-      }
-    });
-
-    const courseSummaries = Array.from(courseStatsMap.entries())
-      .map(([id, stats]) => ({
-        courseId: id,
-        courseTitle: stats.title,
-        averageRating: stats.count ? Math.round((stats.sum / stats.count) * 10) / 10 : 0,
-        feedbackCount: stats.count,
-      }))
-      .sort((a, b) => b.feedbackCount - a.feedbackCount)
-      .slice(0, 10);
+    // Top Courses/Cohorts list
+    const topPerformers = Array.from(
+      allFeedback.reduce((acc, f) => {
+        const title = f.course?.title || 'Unknown';
+        if (!acc.has(title)) acc.set(title, { sum: 0, count: 0 });
+        if (f.rating !== null) {
+          acc.get(title).sum += f.rating;
+          acc.get(title).count += 1;
+        }
+        return acc;
+      }, new Map()).entries()
+    ).map(([title, stats]) => ({
+      title,
+      averageRating: stats.count ? Math.round((stats.sum / stats.count) * 10) / 10 : 0,
+      count: stats.count
+    })).sort((a, b) => b.count - a.count).slice(0, 5);
 
     res.status(200).json({
       success: true,
@@ -472,21 +462,21 @@ export const getCourseFeedbackSummary = async (req, res) => {
           totalReviews,
           satisfactionPercent,
         },
-        ratingDistribution: distribution,
-        courseSummaries,
-        insights: buildFeedbackInsights(allFeedback.slice(0, 500)), // Analyze up to 500 recent items
-        recentFeedback: paginatedFeedback,
+        ratingDistribution,
+        topPerformers,
+        insights: buildFeedbackInsights(allFeedback.slice(0, 500)), 
+        recentFeedback,
         pagination: {
           page: currentPage,
           limit: pageSize,
           total: totalReviews,
-          totalPages: Math.max(Math.ceil(totalReviews / pageSize), 1),
+          totalPages: Math.ceil(totalReviews / pageSize) || 1,
         },
       },
     });
   } catch (error) {
-    console.error('Get course feedback summary error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch feedback summary' });
+    console.error('Feedback summary error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process feedback analytics' });
   }
 };
 

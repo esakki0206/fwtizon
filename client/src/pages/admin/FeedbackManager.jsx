@@ -50,6 +50,28 @@ const RatingBreakdown = ({ distribution = [], total = 0 }) => (
   </div>
 );
 
+const SentimentTracker = ({ counts = {}, loading }) => {
+  const total = (counts.positive || 0) + (counts.neutral || 0) + (counts.negative || 0);
+  const getPercent = (c) => total > 0 ? Math.round((c / total) * 100) : 0;
+
+  if (loading) return <div className="h-12 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />;
+
+  return (
+    <div className="space-y-2">
+      <div className="h-2.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex">
+        <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${getPercent(counts.positive)}%` }} />
+        <div className="h-full bg-gray-300 dark:bg-gray-600 transition-all duration-500" style={{ width: `${getPercent(counts.neutral)}%` }} />
+        <div className="h-full bg-red-500 transition-all duration-500" style={{ width: `${getPercent(counts.negative)}%` }} />
+      </div>
+      <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-tighter">
+        <span className="text-green-600">Pos {getPercent(counts.positive)}%</span>
+        <span>Neu {getPercent(counts.neutral)}%</span>
+        <span className="text-red-600">Neg {getPercent(counts.negative)}%</span>
+      </div>
+    </div>
+  );
+};
+
 const FeedbackSummaryPanel = ({
   summaryData,
   loading,
@@ -84,7 +106,9 @@ const FeedbackSummaryPanel = ({
         >
           <option value="">All courses</option>
           {courseOptions.map((course) => (
-            <option key={course._id} value={course._id}>{course.title}</option>
+            <option key={course._id} value={course._id}>
+              {course.title} {course.isLiveCohort ? '(Live)' : ''}
+            </option>
           ))}
         </select>
         <select
@@ -124,7 +148,7 @@ const FeedbackSummaryPanel = ({
         <SummaryCard label="Satisfaction" value={loading ? '...' : `${summary.satisfactionPercent || 0}%`} icon={<FiTrendingUp className="text-green-500" />} tone="bg-green-50 dark:bg-green-900/20" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center"><FiBarChart2 className="mr-2 text-amber-500" />Rating Breakdown</h3>
           {loading ? <div className="h-28 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" /> : <RatingBreakdown distribution={data.ratingDistribution || []} total={summary.totalReviews || 0} />}
@@ -142,7 +166,7 @@ const FeedbackSummaryPanel = ({
                 </span>
               ))}
             </div>
-          ) : <p className="text-sm text-gray-500">No repeated positive highlights yet.</p>}
+          ) : <p className="text-sm text-gray-500">No repeated highlights yet.</p>}
         </div>
 
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
@@ -153,25 +177,61 @@ const FeedbackSummaryPanel = ({
             <div className="space-y-2">
               {insights.topIssues.map((item) => (
                 <div key={item.label} className="flex items-center justify-between rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm">
-                  <span className="font-semibold text-red-700 dark:text-red-300">{item.label}</span>
-                  <span className="text-xs font-black text-red-500">{item.count}</span>
+                  <span className="font-semibold text-red-700 dark:text-red-300 truncate mr-2">{item.label}</span>
+                  <span className="text-xs font-black text-red-500 shrink-0">{item.count}</span>
                 </div>
               ))}
             </div>
-          ) : <p className="text-sm text-gray-500">No frequent complaint pattern detected.</p>}
+          ) : <p className="text-sm text-gray-500">No frequent issues detected.</p>}
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center"><FiTrendingUp className="mr-2 text-primary-500" />Top Performers</h3>
+          {loading ? (
+            <div className="h-28 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : data.topPerformers?.length ? (
+            <div className="space-y-3">
+              {data.topPerformers.map((item) => (
+                <div key={item.title} className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{item.title}</p>
+                    <p className="text-[10px] text-gray-500">{item.count} reviews</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-xs font-black text-amber-500">{item.averageRating}</span>
+                    <FiStar className="text-amber-500 fill-amber-500" size={10} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-gray-500">No data available yet.</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 xl:col-span-1">
-          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Auto Summary</h3>
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Sentiment & Insights</h3>
+          <SentimentTracker counts={insights.sentimentCounts} loading={loading} />
+          <div className="mt-5 space-y-2">
+            {(insights.insights || []).map((insight) => (
+              <p key={insight} className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 border-l-4 border-primary-500">{insight}</p>
+            ))}
+            {!loading && !insights.insights?.length && <p className="text-xs text-gray-500 italic">No automated insights yet.</p>}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 xl:col-span-1">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Common Keywords</h3>
           {loading ? (
-            <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            <div className="h-32 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
           ) : (
-            <div className="space-y-2">
-              {(insights.insights || []).map((insight) => (
-                <p key={insight} className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200">{insight}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(insights.commonKeywords || []).map(item => (
+                <span key={item.keyword} className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-600 dark:text-gray-400">
+                  {item.keyword} <span className="opacity-50">({item.count})</span>
+                </span>
               ))}
+              {!insights.commonKeywords?.length && <p className="text-xs text-gray-500">Not enough data.</p>}
             </div>
           )}
         </div>
@@ -254,8 +314,16 @@ const FeedbackManager = () => {
 
   const fetchCourseOptions = useCallback(async () => {
     try {
-      const res = await axios.get('/api/admin/courses?limit=100');
-      setCourseOptions(res.data.data || []);
+      const [coursesRes, liveRes] = await Promise.all([
+        axios.get('/api/admin/courses?limit=100'),
+        axios.get('/api/admin/live-courses')
+      ]);
+      const courses = (coursesRes.data.data || []).map(c => ({ ...c, isLiveCohort: false }));
+      const live = (liveRes.data.data || []).map(c => ({ ...c, isLiveCohort: true }));
+      
+      // Merge and sort alphabetically
+      const combined = [...courses, ...live].sort((a, b) => a.title.localeCompare(b.title));
+      setCourseOptions(combined);
     } catch {
       setCourseOptions([]);
     }

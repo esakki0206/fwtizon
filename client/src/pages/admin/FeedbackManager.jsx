@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers, FiSearch, FiAlertTriangle, FiBarChart2, FiTrendingUp } from 'react-icons/fi';
 import { Button } from '../../components/ui/button';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const QUESTION_TYPES = [
   { value: 'rating', label: 'Star Rating (1-5)' },
@@ -20,10 +21,206 @@ const StatusBadge = ({ isUnlocked, isActive }) => {
   return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center w-max"><FiLock className="mr-1" size={10} />Locked</span>;
 };
 
+const SummaryCard = ({ label, value, icon, tone }) => (
+  <div className={`${tone} rounded-2xl p-4 sm:p-5 border border-gray-100 dark:border-gray-800 min-w-0`}>
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider truncate">{label}</p>
+        <p className="text-2xl font-black text-gray-900 dark:text-white mt-1 truncate">{value}</p>
+      </div>
+      <div className="text-2xl shrink-0">{icon}</div>
+    </div>
+  </div>
+);
+
+const RatingBreakdown = ({ distribution = [], total = 0 }) => (
+  <div className="space-y-2">
+    {distribution.map((item) => {
+      const width = total > 0 ? Math.round((item.count / total) * 100) : 0;
+      return (
+        <div key={item.star} className="flex items-center gap-3 text-xs">
+          <span className="w-8 shrink-0 font-bold text-gray-600 dark:text-gray-300">{item.star} star</span>
+          <div className="h-2 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+            <div className="h-full rounded-full bg-amber-400" style={{ width: `${width}%` }} />
+          </div>
+          <span className="w-8 text-right font-semibold text-gray-500">{item.count}</span>
+        </div>
+      );
+    })}
+  </div>
+);
+
+const FeedbackSummaryPanel = ({
+  summaryData,
+  loading,
+  filters,
+  courseOptions,
+  onFilterChange,
+  onClearFilters,
+  page,
+  onPageChange,
+}) => {
+  const data = summaryData || {};
+  const summary = data.summary || { averageRating: 0, totalReviews: 0, satisfactionPercent: 0 };
+  const insights = data.insights || {};
+  const recentFeedback = data.recentFeedback || [];
+  const pagination = data.pagination || { page: 1, totalPages: 1, total: 0 };
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Smart Feedback Summary</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Course review analytics and actionable student insights</p>
+        </div>
+        <Button variant="outline" className="w-full sm:w-auto" onClick={onClearFilters}>Clear Filters</Button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <select
+          value={filters.courseId}
+          onChange={(e) => onFilterChange('courseId', e.target.value)}
+          className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">All courses</option>
+          {courseOptions.map((course) => (
+            <option key={course._id} value={course._id}>{course.title}</option>
+          ))}
+        </select>
+        <select
+          value={filters.rating}
+          onChange={(e) => onFilterChange('rating', e.target.value)}
+          className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">All ratings</option>
+          {[5, 4, 3, 2, 1].map((star) => <option key={star} value={star}>{star} stars</option>)}
+        </select>
+        <input
+          type="date"
+          value={filters.from}
+          onChange={(e) => onFilterChange('from', e.target.value)}
+          className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+        />
+        <input
+          type="date"
+          value={filters.to}
+          onChange={(e) => onFilterChange('to', e.target.value)}
+          className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+        />
+        <div className="relative">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+          <input
+            value={filters.search}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            placeholder="Search comments"
+            className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SummaryCard label="Average Rating" value={loading ? '...' : `${summary.averageRating || 0}/5`} icon={<FiStar className="text-amber-500" />} tone="bg-amber-50 dark:bg-amber-900/20" />
+        <SummaryCard label="Total Reviews" value={loading ? '...' : summary.totalReviews || 0} icon={<FiMessageSquare className="text-blue-500" />} tone="bg-blue-50 dark:bg-blue-900/20" />
+        <SummaryCard label="Satisfaction" value={loading ? '...' : `${summary.satisfactionPercent || 0}%`} icon={<FiTrendingUp className="text-green-500" />} tone="bg-green-50 dark:bg-green-900/20" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center"><FiBarChart2 className="mr-2 text-amber-500" />Rating Breakdown</h3>
+          {loading ? <div className="h-28 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" /> : <RatingBreakdown distribution={data.ratingDistribution || []} total={summary.totalReviews || 0} />}
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center"><FiCheckCircle className="mr-2 text-green-500" />Top Strengths</h3>
+          {loading ? (
+            <div className="h-28 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : insights.topStrengths?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {insights.topStrengths.map((item) => (
+                <span key={item.keyword} className="rounded-full bg-green-50 dark:bg-green-900/20 px-3 py-1.5 text-xs font-bold text-green-700 dark:text-green-300">
+                  {item.keyword} <span className="font-black">{item.count}</span>
+                </span>
+              ))}
+            </div>
+          ) : <p className="text-sm text-gray-500">No repeated positive highlights yet.</p>}
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center"><FiAlertTriangle className="mr-2 text-red-500" />Top Issues</h3>
+          {loading ? (
+            <div className="h-28 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : insights.topIssues?.length ? (
+            <div className="space-y-2">
+              {insights.topIssues.map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm">
+                  <span className="font-semibold text-red-700 dark:text-red-300">{item.label}</span>
+                  <span className="text-xs font-black text-red-500">{item.count}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-gray-500">No frequent complaint pattern detected.</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 xl:col-span-1">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Auto Summary</h3>
+          {loading ? (
+            <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : (
+            <div className="space-y-2">
+              {(insights.insights || []).map((insight) => (
+                <p key={insight} className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200">{insight}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 xl:col-span-2 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Recent Feedback</h3>
+            <span className="text-xs text-gray-500">{pagination.total || 0} matching reviews</span>
+          </div>
+          {loading ? (
+            <div className="h-40 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : recentFeedback.length ? (
+            <div className="space-y-3">
+              {recentFeedback.map((review) => (
+                <div key={review._id} className="rounded-xl border border-gray-100 dark:border-gray-800 p-4 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{review.course?.title || 'Unknown Course'}</p>
+                      <p className="text-xs text-gray-500 truncate">{review.user?.name || 'Anonymous Student'} · {new Date(review.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex text-amber-400 shrink-0">
+                      {[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Number(review.rating) ? 'fill-current' : 'text-gray-300'} />)}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mt-3 break-words">{review.comment}</p>
+                </div>
+              ))}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2">
+                <Button variant="outline" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Previous</Button>
+                <span className="text-center text-xs font-bold text-gray-500">Page {pagination.page || 1} of {pagination.totalPages || 1}</span>
+                <Button variant="outline" disabled={page >= (pagination.totalPages || 1)} onClick={() => onPageChange(page + 1)}>Next</Button>
+              </div>
+            </div>
+          ) : <p className="text-center py-10 text-sm text-gray-500">No reviews match the selected filters.</p>}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const FeedbackManager = () => {
   const [forms, setForms] = useState([]);
   const [liveCourses, setLiveCourses] = useState([]);
+  const [courseOptions, setCourseOptions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [feedbackSummary, setFeedbackSummary] = useState(null);
+  const [summaryPage, setSummaryPage] = useState(1);
+  const [feedbackFilters, setFeedbackFilters] = useState({ courseId: '', rating: '', from: '', to: '', search: '' });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [responsesModal, setResponsesModal] = useState(null);
@@ -32,6 +229,7 @@ const FeedbackManager = () => {
 
   // Form state
   const [formData, setFormData] = useState({ liveCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
+  const debouncedSearch = useDebouncedValue(feedbackFilters.search, 350);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -49,7 +247,49 @@ const FeedbackManager = () => {
     } catch { /* silent */ }
   };
 
+  const fetchCourseOptions = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/admin/courses?limit=100');
+      setCourseOptions(res.data.data || []);
+    } catch {
+      setCourseOptions([]);
+    }
+  }, []);
+
+  const fetchFeedbackSummary = useCallback(async () => {
+    try {
+      setSummaryLoading(true);
+      const params = new URLSearchParams();
+      if (feedbackFilters.courseId) params.set('courseId', feedbackFilters.courseId);
+      if (feedbackFilters.rating) params.set('rating', feedbackFilters.rating);
+      if (feedbackFilters.from) params.set('from', feedbackFilters.from);
+      if (feedbackFilters.to) params.set('to', feedbackFilters.to);
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+      params.set('page', String(summaryPage));
+      params.set('limit', '8');
+
+      const res = await axios.get(`/api/admin/feedback-summary?${params.toString()}`);
+      setFeedbackSummary(res.data.data);
+    } catch {
+      toast.error('Failed to load feedback summary');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [feedbackFilters.courseId, feedbackFilters.rating, feedbackFilters.from, feedbackFilters.to, debouncedSearch, summaryPage]);
+
   useEffect(() => { fetchForms(); }, [fetchForms]);
+  useEffect(() => { fetchCourseOptions(); }, [fetchCourseOptions]);
+  useEffect(() => { fetchFeedbackSummary(); }, [fetchFeedbackSummary]);
+
+  const updateFeedbackFilter = (field, value) => {
+    setFeedbackFilters((current) => ({ ...current, [field]: value }));
+    setSummaryPage(1);
+  };
+
+  const clearFeedbackFilters = () => {
+    setFeedbackFilters({ courseId: '', rating: '', from: '', to: '', search: '' });
+    setSummaryPage(1);
+  };
 
   const formatLocalDatetime = (dateString) => {
     if (!dateString) return '';
@@ -149,6 +389,17 @@ const FeedbackManager = () => {
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
+      <FeedbackSummaryPanel
+        summaryData={feedbackSummary}
+        loading={summaryLoading}
+        filters={feedbackFilters}
+        courseOptions={courseOptions}
+        onFilterChange={updateFeedbackFilter}
+        onClearFilters={clearFeedbackFilters}
+        page={summaryPage}
+        onPageChange={setSummaryPage}
+      />
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[

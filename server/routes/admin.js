@@ -26,6 +26,7 @@ import {
   toggleFeedbackForm,
   getFormResponses,
   resetSubmission,
+  getCourseFeedbackSummary,
 } from './feedbackController.js';
 import {
   listCoupons,
@@ -1220,7 +1221,6 @@ router.get('/cohorts/:cohortId/students', protect, authorize('admin'), async (re
     const enrollments = await Enrollment.find({ 
       liveCourse: req.params.cohortId,
       status: { $in: ['active', 'completed'] },
-      paymentId: { $exists: true, $ne: null }
     }).populate('user', 'name email');
 
     const formatted = enrollments.map(en => ({
@@ -1229,7 +1229,7 @@ router.get('/cohorts/:cohortId/students', protect, authorize('admin'), async (re
       userEmail: en.user?.email || en.email,
       completionStatus: 'ELIGIBLE', // No completion check for cohort mapping per requirements
       completedAt: en.completedAt || null
-    })).filter(e => e.userId);
+    })).filter(e => e.userId || e.userName);
 
     res.status(200).json({ success: true, count: formatted.length, data: formatted });
   } catch (error) {
@@ -1299,7 +1299,6 @@ router.get('/courses/:courseId/enrolled-students', protect, authorize('admin'), 
     const enrollments = await Enrollment.find({ 
       course: req.params.courseId,
       status: { $in: ['active', 'completed'] },
-      paymentId: { $exists: true, $ne: null } // Ensure payment is success
     }).populate('user', 'name email');
 
     const formatted = enrollments.map(en => ({
@@ -1308,7 +1307,7 @@ router.get('/courses/:courseId/enrolled-students', protect, authorize('admin'), 
       userEmail: en.user?.email || en.email,
       completionStatus: en.status === 'completed' || en.progress?.percentComplete >= 100 ? 'COMPLETED' : 'IN_PROGRESS',
       completedAt: en.completedAt || null
-    })).filter(e => e.userId); // filter out if user population failed
+    })).filter(e => e.userId || e.userName); 
 
     res.status(200).json({ success: true, count: formatted.length, data: formatted });
   } catch (error) {
@@ -2038,6 +2037,7 @@ router.delete('/feedback-forms/:id', protect, authorize('admin'), deleteFeedback
 router.patch('/feedback-forms/:id/toggle', protect, authorize('admin'), toggleFeedbackForm);
 router.get('/feedback-forms/:id/responses', protect, authorize('admin'), getFormResponses);
 router.delete('/feedback-forms/:id/submissions/:subId/reset', protect, authorize('admin'), resetSubmission);
+router.get('/feedback-summary', protect, authorize('admin'), getCourseFeedbackSummary);
 
 // ==============================
 // COUPON MANAGEMENT

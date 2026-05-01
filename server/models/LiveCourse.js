@@ -117,7 +117,7 @@ liveCourseSchema.pre('save', function() {
     }
   }
 
-  if (this.status !== 'Draft' && this.status !== 'Cancelled') {
+  if (this.status !== 'Draft' && this.status !== 'Cancelled' && this.status !== 'Completed') {
     const today = new Date();
     const startDate = this.startDate ? new Date(this.startDate) : null;
     const endDate = this.endDate ? new Date(this.endDate) : null; // If duration is used without endDate, this might need parsing, but we will assume endDate is provided or we just check startDate

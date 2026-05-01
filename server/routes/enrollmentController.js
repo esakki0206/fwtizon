@@ -762,9 +762,13 @@ export const checkEnrollmentStatus = async (req, res) => {
     if (liveCourseId) query.liveCourse = liveCourseId;
     if (courseId) query.course = courseId;
 
-    const exists = await Enrollment.findOne(query).lean();
-
-    res.status(200).json({ success: true, enrolled: !!exists });
+    const enrollment = await Enrollment.findOne(query).populate('liveCourse', 'zoomLink').lean();
+    
+    res.status(200).json({ 
+      success: true, 
+      enrolled: !!enrollment,
+      zoomLink: enrollment?.liveCourse?.zoomLink 
+    });
   } catch (error) {
     console.error('CHECK ENROLLMENT STATUS ERROR:', error.message);
     res.status(500).json({ success: false, message: error.message });

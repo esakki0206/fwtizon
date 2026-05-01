@@ -31,6 +31,7 @@ const LiveCourseDetail = () => {
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
+  const [zoomLink, setZoomLink] = useState(null);
 
   // ── Coupon Logic ───────────────────────────────────────────────────────────
   const [couponCodeInput, setCouponCodeInput] = useState('');
@@ -103,6 +104,7 @@ const LiveCourseDetail = () => {
       setEnrollmentLoading(true);
       const res = await axios.get(`/api/enroll/status?liveCourseId=${courseId}`);
       setIsEnrolled(res.data?.enrolled === true);
+      if (res.data?.zoomLink) setZoomLink(res.data.zoomLink);
     } catch (_err) {
       // Silently ignore — don't break the page if enrollment check fails
     } finally {
@@ -137,6 +139,7 @@ const LiveCourseDetail = () => {
   );
 
   const isFull = course.currentEnrollments >= course.maxStudents;
+  const isCompleted = course.status === 'Completed';
 
   // ── Razorpay script loader ─────────────────────────────────────────────────
   const loadRazorpayScript = () => {
@@ -324,6 +327,17 @@ const LiveCourseDetail = () => {
       );
     }
 
+    if (isCompleted) {
+      return (
+        <button
+          disabled
+          className="w-full py-3 md:py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center"
+        >
+          Completed
+        </button>
+      );
+    }
+
     if (isEnrolled) {
       return (
         <div className="space-y-2">
@@ -333,6 +347,23 @@ const LiveCourseDetail = () => {
           >
             <FiCheckCircle className="mr-2" size={16} /> Applied &amp; Enrolled
           </button>
+          
+          {zoomLink && !isCompleted && (
+            <a
+              href={zoomLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98]"
+            >
+              <FiVideo size={18} /> Join Live Class
+            </a>
+          )}
+
+          {isCompleted && isEnrolled && (
+            <div className="text-center text-xs font-bold text-gray-500 uppercase tracking-widest py-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-800">
+              Session Ended
+            </div>
+          )}
           <button
             onClick={handleAddToCalendar}
             className={`w-full py-2.5 border-2 font-semibold text-sm rounded-lg md:rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${calendarAdded
@@ -667,8 +698,8 @@ const LiveCourseDetail = () => {
                     </span>
                   </div>
                 )}
-                <div className="text-xs md:text-sm font-medium text-green-600 dark:text-green-400 flex items-center">
-                  <FiClock className="mr-1" size={14} /> Enrolling now
+                <div className={`text-xs md:text-sm font-medium flex items-center ${isCompleted ? 'text-gray-500' : 'text-green-600 dark:text-green-400'}`}>
+                  <FiClock className="mr-1" size={14} /> {isCompleted ? 'Registration Closed' : 'Enrolling now'}
                 </div>
               </div>
 
@@ -701,9 +732,9 @@ const LiveCourseDetail = () => {
                   </div>
                   <div className="col-span-2">
                     <span className="text-xs text-gray-500 block mb-0.5 md:mb-1">Availability</span>
-                    <span className={`text-sm md:text-base font-bold flex items-center ${isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'
+                    <span className={`text-sm md:text-base font-bold flex items-center ${isCompleted || isFull ? 'text-red-500' : 'text-primary-600 dark:text-primary-400'
                       }`}>
-                      {isFull ? 'No seats left' : `${course.maxStudents - course.currentEnrollments} left`}
+                      {isCompleted ? 'Registration Closed' : isFull ? 'No seats left' : `${course.maxStudents - course.currentEnrollments} left`}
                     </span>
                   </div>
                 </div>
@@ -725,7 +756,7 @@ const LiveCourseDetail = () => {
                   </div>
                 </div>
 
-                {!isEnrolled && !isFull && (
+                {!isEnrolled && !isFull && !isCompleted && (
                   <div className="mb-4">
                     {appliedCoupon ? (
                       <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg">

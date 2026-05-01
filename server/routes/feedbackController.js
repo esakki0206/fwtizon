@@ -1,14 +1,27 @@
 import FeedbackForm from '../models/FeedbackForm.js';
 import FeedbackSubmission from '../models/FeedbackSubmission.js';
+import Review from '../models/Review.js';
 import Enrollment from '../models/Enrollment.js';
 import LiveCourse from '../models/LiveCourse.js';
 import Certificate from '../models/Certificate.js';
 import Counter from '../models/Counter.js';
 import Notification from '../models/Notification.js';
+import mongoose from 'mongoose';
+import { buildFeedbackInsights } from '../utils/feedbackInsights.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const parseDateFilter = (value, boundary) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  if (boundary === 'end') parsed.setHours(23, 59, 59, 999);
+  if (boundary === 'start') parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
 
 /**
  * SINGLE SOURCE OF TRUTH: Helper to determine if a feedback form is unlocked.
@@ -299,6 +312,159 @@ export const resetSubmission = async (req, res) => {
     res.status(200).json({ success: true, message: 'Submission reset successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to reset submission' });
+  }
+};
+
+export const getCourseFeedbackSummary = async (req, res) => {
+  try {
+    const {
+      courseId,
+      rating,
+      from,
+      to,
+      search,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const match = {};
+
+    if (courseId) {
+      if (!isValidObjectId(courseId)) {
+        return res.status(400).json({ success: false, message: 'Invalid course ID' });
+      }
+      match.course = new mongoose.Types.ObjectId(courseId);
+    }
+
+    if (rating) {
+      const parsedRating = Number(rating);
+      if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+      }
+      match.rating = parsedRating;
+    }
+
+    const fromDate = parseDateFilter(from, 'start');
+    const toDate = parseDateFilter(to, 'end');
+    if (fromDate === false || toDate === false) {
+      return res.status(400).json({ success: false, message: 'Invalid date filter' });
+    }
+    if (fromDate || toDate) {
+      match.createdAt = {};
+      if (fromDate) match.createdAt.$gte = fromDate;
+      if (toDate) match.createdAt.$lte = toDate;
+    }
+
+    if (search && search.trim()) {
+      match.comment = { $regex: escapeRegex(search.trim()), $options: 'i' };
+    }
+
+    const currentPage = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+    const skip = (currentPage - 1) * pageSize;
+
+    const [
+      totals,
+      ratingDistribution,
+      courseSummaries,
+      recentFeedback,
+      matchingReviews,
+      totalMatching,
+    ] = await Promise.all([
+      Review.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            averageRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+            satisfiedReviews: {
+              $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      Review.aggregate([
+        { $match: match },
+        { $group: { _id: '$rating', count: { $sum: 1 } } },
+        { $sort: { _id: -1 } },
+      ]),
+      Review.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$course',
+            averageRating: { $avg: '$rating' },
+            feedbackCount: { $sum: 1 },
+          },
+        },
+        { $sort: { feedbackCount: -1, averageRating: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: 'courses',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'course',
+          },
+        },
+        { $unwind: { path: '$course', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 0,
+            courseId: '$_id',
+            courseTitle: { $ifNull: ['$course.title', 'Unknown Course'] },
+            averageRating: { $round: ['$averageRating', 1] },
+            feedbackCount: 1,
+          },
+        },
+      ]),
+      Review.find(match)
+        .populate('user', 'name email avatar')
+        .populate('course', 'title')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(pageSize)
+        .lean(),
+      Review.find(match).select('rating comment').limit(500).lean(),
+      Review.countDocuments(match),
+    ]);
+
+    const summary = totals[0] || { averageRating: 0, totalReviews: 0, satisfiedReviews: 0 };
+    const distributionMap = new Map(ratingDistribution.map((item) => [item._id, item.count]));
+    const distribution = [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      count: distributionMap.get(star) || 0,
+    }));
+
+    const totalReviews = summary.totalReviews || 0;
+    const satisfactionPercent = totalReviews
+      ? Math.round(((summary.satisfiedReviews || 0) / totalReviews) * 1000) / 10
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary: {
+          averageRating: totalReviews ? Math.round(summary.averageRating * 10) / 10 : 0,
+          totalReviews,
+          satisfactionPercent,
+        },
+        ratingDistribution: distribution,
+        courseSummaries,
+        insights: buildFeedbackInsights(matchingReviews),
+        recentFeedback,
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: totalMatching,
+          totalPages: Math.max(Math.ceil(totalMatching / pageSize), 1),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get course feedback summary error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch feedback summary' });
   }
 };
 

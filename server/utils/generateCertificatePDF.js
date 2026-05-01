@@ -33,7 +33,7 @@ const POS = {
 
   course: {
     x: 700,
-    y: 1465,          // ⬅️ FIXED (moved down for proper spacing)
+    y: 1455,          // ⬅️ FIXED (moved down for proper spacing)
     width: 1080,
     height: 160,
     wipe: { x: 820, y: 1465, width: 860, height: 180 },
@@ -41,20 +41,20 @@ const POS = {
   },
 
   date: {
-    x: 2191,
-    y: 3303,
+    x: 2190,
+    y: 3305,
     width: 141,
-    height: 41,
-    wipe: { x: 2192, y: 3292, width: 165, height: 54 },
+    height: 42,
+    wipe: { x: 2192, y: 3293, width: 165, height: 56 },
     baselineAdjust: 0.3,
   },
 
   slNo: {
     x: 2195,
-    y: 3374,
+    y: 3377,
     width: 151,
-    height: 24,
-    wipe: { x: 2194, y: 3371, width: 162, height: 55 },
+    height: 25,
+    wipe: { x: 2194, y: 3371, width: 162, height: 57 },
     baselineAdjust: 0.2,
   },
 };

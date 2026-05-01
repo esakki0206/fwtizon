@@ -189,7 +189,12 @@ const FeedbackSummaryPanel = ({
                 <div key={review._id} className="rounded-xl border border-gray-100 dark:border-gray-800 p-4 min-w-0">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{review.course?.title || 'Unknown Course'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{review.course?.title || 'Unknown Course'}</p>
+                        {review.isSubmission && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">Form</span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500 truncate">{review.user?.name || 'Anonymous Student'} · {new Date(review.createdAt).toLocaleDateString()}</p>
                     </div>
                     <div className="flex text-amber-400 shrink-0">

@@ -327,138 +327,160 @@ export const getCourseFeedbackSummary = async (req, res) => {
       limit = 10,
     } = req.query;
 
-    const match = {};
+    const queryRating = rating ? Number(rating) : null;
+    const fromDate = parseDateFilter(from, 'start');
+    const toDate = parseDateFilter(to, 'end');
+    const searchTerm = search && search.trim() ? search.trim() : null;
+
+    // ── Build filters for both models ──
+    const reviewMatch = {};
+    const subMatch = {};
 
     if (courseId) {
       if (!isValidObjectId(courseId)) {
         return res.status(400).json({ success: false, message: 'Invalid course ID' });
       }
-      match.course = new mongoose.Types.ObjectId(courseId);
+      const oid = new mongoose.Types.ObjectId(courseId);
+      reviewMatch.course = oid;
+      subMatch.liveCourse = oid;
     }
 
-    if (rating) {
-      const parsedRating = Number(rating);
-      if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
-        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-      }
-      match.rating = parsedRating;
+    if (queryRating) {
+      reviewMatch.rating = queryRating;
+      // For submissions, we'll filter after flattening
     }
 
-    const fromDate = parseDateFilter(from, 'start');
-    const toDate = parseDateFilter(to, 'end');
-    if (fromDate === false || toDate === false) {
-      return res.status(400).json({ success: false, message: 'Invalid date filter' });
-    }
     if (fromDate || toDate) {
-      match.createdAt = {};
-      if (fromDate) match.createdAt.$gte = fromDate;
-      if (toDate) match.createdAt.$lte = toDate;
+      const dateFilter = {};
+      if (fromDate) dateFilter.$gte = fromDate;
+      if (toDate) dateFilter.$lte = toDate;
+      reviewMatch.createdAt = dateFilter;
+      subMatch.createdAt = dateFilter;
     }
 
-    if (search && search.trim()) {
-      match.comment = { $regex: escapeRegex(search.trim()), $options: 'i' };
+    if (searchTerm) {
+      reviewMatch.comment = { $regex: escapeRegex(searchTerm), $options: 'i' };
+      // For submissions, we'll filter after flattening
     }
 
-    const currentPage = Math.max(parseInt(page, 10) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
-    const skip = (currentPage - 1) * pageSize;
-
-    const [
-      totals,
-      ratingDistribution,
-      courseSummaries,
-      recentFeedback,
-      matchingReviews,
-      totalMatching,
-    ] = await Promise.all([
-      Review.aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: null,
-            averageRating: { $avg: '$rating' },
-            totalReviews: { $sum: 1 },
-            satisfiedReviews: {
-              $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] },
-            },
-          },
-        },
-      ]),
-      Review.aggregate([
-        { $match: match },
-        { $group: { _id: '$rating', count: { $sum: 1 } } },
-        { $sort: { _id: -1 } },
-      ]),
-      Review.aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: '$course',
-            averageRating: { $avg: '$rating' },
-            feedbackCount: { $sum: 1 },
-          },
-        },
-        { $sort: { feedbackCount: -1, averageRating: -1 } },
-        { $limit: 10 },
-        {
-          $lookup: {
-            from: 'courses',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'course',
-          },
-        },
-        { $unwind: { path: '$course', preserveNullAndEmptyArrays: true } },
-        {
-          $project: {
-            _id: 0,
-            courseId: '$_id',
-            courseTitle: { $ifNull: ['$course.title', 'Unknown Course'] },
-            averageRating: { $round: ['$averageRating', 1] },
-            feedbackCount: 1,
-          },
-        },
-      ]),
-      Review.find(match)
+    // ── Fetch data from both sources ──
+    const [reviews, submissions] = await Promise.all([
+      Review.find(reviewMatch)
         .populate('user', 'name email avatar')
         .populate('course', 'title')
         .sort('-createdAt')
-        .skip(skip)
-        .limit(pageSize)
         .lean(),
-      Review.find(match).select('rating comment').limit(500).lean(),
-      Review.countDocuments(match),
+      FeedbackSubmission.find(subMatch)
+        .populate('feedbackForm')
+        .populate('user', 'name email avatar')
+        .populate('liveCourse', 'title')
+        .sort('-createdAt')
+        .lean(),
     ]);
 
-    const summary = totals[0] || { averageRating: 0, totalReviews: 0, satisfiedReviews: 0 };
-    const distributionMap = new Map(ratingDistribution.map((item) => [item._id, item.count]));
-    const distribution = [5, 4, 3, 2, 1].map((star) => ({
+    // ── Flatten Submissions ──
+    const flattenedSubmissions = submissions.map(sub => {
+      const form = sub.feedbackForm;
+      if (!form || !form.questions) return null;
+
+      // Identify rating and comment questions
+      const ratingQIdx = form.questions.findIndex(q => q.type === 'rating');
+      const commentQIdx = form.questions.findIndex(q => q.type === 'textarea' || q.type === 'text');
+
+      const ratingRes = sub.responses.find(r => r.questionIndex === ratingQIdx);
+      const commentRes = sub.responses.find(r => r.questionIndex === commentQIdx);
+
+      const ratingVal = ratingRes ? Number(ratingRes.answer) : null;
+      const commentVal = commentRes ? String(commentRes.answer) : '';
+
+      // Post-flattening filters
+      if (queryRating && ratingVal !== queryRating) return null;
+      if (searchTerm && !new RegExp(escapeRegex(searchTerm), 'i').test(commentVal)) return null;
+
+      return {
+        _id: sub._id,
+        rating: ratingVal,
+        comment: commentVal,
+        user: sub.user,
+        course: sub.liveCourse, // unified field name
+        createdAt: sub.createdAt,
+        isSubmission: true,
+        formTitle: form.title,
+      };
+    }).filter(Boolean);
+
+    // ── Merge and Sort ──
+    const allFeedback = [
+      ...reviews.map(r => ({ ...r, isSubmission: false })),
+      ...flattenedSubmissions,
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // ── Calculate Summary Stats ──
+    const totalReviews = allFeedback.length;
+    const feedbackWithRating = allFeedback.filter(f => f.rating !== null);
+    const sumRating = feedbackWithRating.reduce((acc, f) => acc + f.rating, 0);
+    const averageRating = feedbackWithRating.length ? sumRating / feedbackWithRating.length : 0;
+    
+    const satisfiedCount = feedbackWithRating.filter(f => f.rating >= 4).length;
+    const satisfactionPercent = feedbackWithRating.length 
+      ? Math.round((satisfiedCount / feedbackWithRating.length) * 1000) / 10 
+      : 0;
+
+    // Distribution
+    const distribution = [5, 4, 3, 2, 1].map(star => ({
       star,
-      count: distributionMap.get(star) || 0,
+      count: feedbackWithRating.filter(f => f.rating === star).length,
     }));
 
-    const totalReviews = summary.totalReviews || 0;
-    const satisfactionPercent = totalReviews
-      ? Math.round(((summary.satisfiedReviews || 0) / totalReviews) * 1000) / 10
-      : 0;
+    // Pagination
+    const currentPage = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+    const skip = (currentPage - 1) * pageSize;
+    const paginatedFeedback = allFeedback.slice(skip, skip + pageSize);
+
+    // Course Summaries (optional top 10 list)
+    const courseStatsMap = new Map();
+    allFeedback.forEach(f => {
+      const c = f.course;
+      if (!c || !c._id) return;
+      const cid = c._id.toString();
+      if (!courseStatsMap.has(cid)) {
+        courseStatsMap.set(cid, { title: c.title, sum: 0, count: 0 });
+      }
+      if (f.rating !== null) {
+        const stats = courseStatsMap.get(cid);
+        stats.sum += f.rating;
+        stats.count += 1;
+      }
+    });
+
+    const courseSummaries = Array.from(courseStatsMap.entries())
+      .map(([id, stats]) => ({
+        courseId: id,
+        courseTitle: stats.title,
+        averageRating: stats.count ? Math.round((stats.sum / stats.count) * 10) / 10 : 0,
+        feedbackCount: stats.count,
+      }))
+      .sort((a, b) => b.feedbackCount - a.feedbackCount)
+      .slice(0, 10);
 
     res.status(200).json({
       success: true,
       data: {
         summary: {
-          averageRating: totalReviews ? Math.round(summary.averageRating * 10) / 10 : 0,
+          averageRating: Math.round(averageRating * 10) / 10,
           totalReviews,
           satisfactionPercent,
         },
         ratingDistribution: distribution,
         courseSummaries,
-        insights: buildFeedbackInsights(matchingReviews),
-        recentFeedback,
+        insights: buildFeedbackInsights(allFeedback.slice(0, 500)), // Analyze up to 500 recent items
+        recentFeedback: paginatedFeedback,
         pagination: {
           page: currentPage,
           limit: pageSize,
-          total: totalMatching,
-          totalPages: Math.max(Math.ceil(totalMatching / pageSize), 1),
+          total: totalReviews,
+          totalPages: Math.max(Math.ceil(totalReviews / pageSize), 1),
         },
       },
     });

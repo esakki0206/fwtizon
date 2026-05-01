@@ -41,10 +41,10 @@ const POS = {
   },
 
   date: {
-    x: 2190,
-    y: 3305,
-    width: 141,
-    height: 42,
+    x: 2188,
+    y: 3299,
+    width: 143,
+    height: 55,
     wipe: { x: 2192, y: 3293, width: 165, height: 56 },
     baselineAdjust: 0.3,
   },
@@ -269,8 +269,8 @@ export const generateCertificatePDF = (data) => {
       drawSingleLine(doc, formatCertDate(completionDate), POS.date, {
         font: 'Helvetica-Bold',
         color: COLOR_NAVY,
-        maxSize: 12,
-        minSize: 8.5,
+        maxSize: 11,
+        minSize: 8.80,
         align: 'left',
         baselineAdjust: POS.date.baselineAdjust,
       });

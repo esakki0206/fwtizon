@@ -52,6 +52,21 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
+  enrolledCourses: [{
+    courseId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Course'
+    },
+    type: {
+      type: String,
+      enum: ['auto', 'paid'],
+      default: 'paid'
+    },
+    date: {
+      type: Date,
+      default: Date.now
+    }
+  }],
 }, {
   timestamps: true,
 });

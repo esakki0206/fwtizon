@@ -62,6 +62,95 @@ router.post('/:moduleId/lessons', protect, authorize('instructor', 'admin'), asy
   }
 });
 
+// @desc    Update a module
+// @route   PUT /api/modules/:moduleId
+// @access  Private
+router.put('/:moduleId', protect, authorize('instructor', 'admin'), async (req, res) => {
+  try {
+    const module = await Module.findById(req.params.moduleId).populate('course');
+
+    if (!module) return res.status(404).json({ success: false, message: 'Module not found' });
+    if (module.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    const updatedModule = await Module.findByIdAndUpdate(req.params.moduleId, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    res.status(200).json({ success: true, data: updatedModule });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @desc    Delete a module
+// @route   DELETE /api/modules/:moduleId
+// @access  Private
+router.delete('/:moduleId', protect, authorize('instructor', 'admin'), async (req, res) => {
+  try {
+    const module = await Module.findById(req.params.moduleId).populate('course');
+
+    if (!module) return res.status(404).json({ success: false, message: 'Module not found' });
+    if (module.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    await Lesson.deleteMany({ module: req.params.moduleId });
+    await module.deleteOne();
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @desc    Update a lesson
+// @route   PUT /api/modules/:moduleId/lessons/:lessonId
+// @access  Private
+router.put('/:moduleId/lessons/:lessonId', protect, authorize('instructor', 'admin'), async (req, res) => {
+  try {
+    const lesson = await Lesson.findById(req.params.lessonId).populate({
+      path: 'module',
+      populate: { path: 'course' }
+    });
+
+    if (!lesson) return res.status(404).json({ success: false, message: 'Lesson not found' });
+    if (lesson.module.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    const updatedLesson = await Lesson.findByIdAndUpdate(req.params.lessonId, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    res.status(200).json({ success: true, data: updatedLesson });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @desc    Delete a lesson
+// @route   DELETE /api/modules/:moduleId/lessons/:lessonId
+// @access  Private
+router.delete('/:moduleId/lessons/:lessonId', protect, authorize('instructor', 'admin'), async (req, res) => {
+  try {
+    const lesson = await Lesson.findById(req.params.lessonId).populate({
+      path: 'module',
+      populate: { path: 'course' }
+    });
+
+    if (!lesson) return res.status(404).json({ success: false, message: 'Lesson not found' });
+    if (lesson.module.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    await lesson.deleteOne();
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // @desc    Get a lesson (Content access)
 // @route   GET /api/lessons/:id
 // @access  Private

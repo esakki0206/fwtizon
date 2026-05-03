@@ -10,6 +10,7 @@ import Counter from '../models/Counter.js';
 import CohortApplication from '../models/CohortApplication.js';
 import Module from '../models/Module.js';
 import Coupon from '../models/Coupon.js';
+import User from '../models/User.js';
 import { validateCouponForCourse } from './couponController.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { generateReceiptPDF } from '../utils/generateReceiptPDF.js';
@@ -212,6 +213,7 @@ const enrollUserInCourse = async ({
   couponCode = null,
   discountAmount = 0,
   originalAmount = null,
+  enrollmentType = 'paid',
 }) => {
   // 1. Prevent duplicate enrollments
   const existQuery = { user: user.id, status: { $in: ['active', 'completed'] } };
@@ -235,6 +237,7 @@ const enrollUserInCourse = async ({
     message,
     couponCode: couponCode || null,
     discountAmount: discountAmount || 0,
+    enrollmentType,
   };
 
   if (liveCourseId) {
@@ -309,6 +312,18 @@ const enrollUserInCourse = async ({
   let enrollment;
   try {
     enrollment = await Enrollment.create(enrollData);
+
+    // Update User schema with the course and type (auto/paid) for normal courses
+    if (courseId) {
+      await User.findByIdAndUpdate(user.id, {
+        $push: {
+          enrolledCourses: {
+            courseId,
+            type: enrollmentType
+          }
+        }
+      });
+    }
   } catch (createErr) {
     if (createErr.code === 11000) {
       const duplicateQuery = { user: user.id };
@@ -771,6 +786,98 @@ export const checkEnrollmentStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('CHECK ENROLLMENT STATUS ERROR:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── Check Eligibility for Auto-Enrollment ──────────────────────────────────
+/**
+ * @desc  Check if user is eligible for free auto-enrollment into a Normal Course
+ *        based on an active linked live course enrollment.
+ * @route POST /api/enroll/check-eligibility
+ * @access Private
+ */
+export const checkEligibility = async (req, res) => {
+  try {
+    const { courseId } = req.body;
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Valid courseId is required' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    if (!course.linkedLiveCourseId) {
+      return res.status(200).json({ success: true, eligibleForFree: false, reason: 'No linked live course' });
+    }
+
+    // Check if user is enrolled in the linked live course
+    const liveEnrollment = await Enrollment.findOne({
+      user: req.user.id,
+      liveCourse: course.linkedLiveCourseId,
+      status: { $in: ['active', 'completed'] }
+    });
+
+    if (liveEnrollment) {
+      return res.status(200).json({ success: true, eligibleForFree: true, reason: 'Active enrollment in linked live course' });
+    } else {
+      return res.status(200).json({ success: true, eligibleForFree: false, reason: 'Not enrolled in linked live course' });
+    }
+  } catch (error) {
+    console.error('CHECK ELIGIBILITY ERROR:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── Auto-Enroll ─────────────────────────────────────────────────────────────
+/**
+ * @desc  Auto enroll user into a Normal Course if eligible.
+ * @route POST /api/enroll/auto-enroll
+ * @access Private
+ */
+export const autoEnroll = async (req, res) => {
+  try {
+    const { courseId } = req.body;
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Valid courseId is required' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course || !course.linkedLiveCourseId) {
+      return res.status(403).json({ success: false, message: 'Not eligible for auto-enrollment' });
+    }
+
+    const liveEnrollment = await Enrollment.findOne({
+      user: req.user.id,
+      liveCourse: course.linkedLiveCourseId,
+      status: { $in: ['active', 'completed'] }
+    });
+
+    if (!liveEnrollment) {
+      return res.status(403).json({ success: false, message: 'Not enrolled in linked live course' });
+    }
+
+    // Call shared enroll logic
+    const result = await enrollUserInCourse({
+      user: req.user,
+      courseId,
+      fullName: req.user.name,
+      email: req.user.email,
+      paymentId: `auto_enrolled_${Date.now()}`,
+      orderId: 'auto_enrolled',
+      isAdminBypass: true, // Bypass amount verification
+      enrollmentType: 'auto',
+    });
+
+    if (result.alreadyEnrolled) {
+      return res.status(200).json({ success: true, message: 'Already enrolled' });
+    }
+
+    res.status(200).json({ success: true, message: 'Successfully auto-enrolled' });
+  } catch (error) {
+    console.error('AUTO ENROLL ERROR:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };

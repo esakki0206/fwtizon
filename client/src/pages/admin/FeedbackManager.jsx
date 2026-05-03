@@ -293,7 +293,7 @@ const FeedbackManager = () => {
   const [loadingResponses, setLoadingResponses] = useState(false);
 
   // Form state
-  const [formData, setFormData] = useState({ liveCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
+  const [formData, setFormData] = useState({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
   const debouncedSearch = useDebouncedValue(feedbackFilters.search, 350);
 
   const fetchForms = useCallback(async () => {
@@ -376,17 +376,17 @@ const FeedbackManager = () => {
   };
 
   const openCreateModal = async () => {
-    await fetchLiveCourses();
+    await fetchCourseOptions();
     setEditingForm(null);
-    setFormData({ liveCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
+    setFormData({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
     setModalOpen(true);
   };
 
   const openEditModal = async (form) => {
-    await fetchLiveCourses();
+    await fetchCourseOptions();
     setEditingForm(form);
     setFormData({
-      liveCourseId: form.liveCourse?._id || '',
+      selectedCourseId: form.liveCourse?._id || form.course?._id || '',
       title: form.title,
       instructions: form.instructions || '',
       unlockDate: formatLocalDatetime(form.unlockDate),
@@ -399,7 +399,7 @@ const FeedbackManager = () => {
   const handleSave = async () => {
     if (!formData.title.trim()) return toast.error('Title is required');
     if (!formData.questions.length || formData.questions.some(q => !q.text.trim())) return toast.error('All questions must have text');
-    if (!editingForm && !formData.liveCourseId) return toast.error('Select a live course');
+    if (!editingForm && !formData.selectedCourseId) return toast.error('Select a course');
 
     try {
       if (editingForm) {
@@ -409,10 +409,15 @@ const FeedbackManager = () => {
         });
         toast.success('Form updated');
       } else {
-        await axios.post('/api/admin/feedback-forms', {
-          liveCourseId: formData.liveCourseId, title: formData.title, instructions: formData.instructions,
+        const selectedCourse = courseOptions.find(c => c._id === formData.selectedCourseId);
+        const payload = {
+          title: formData.title, instructions: formData.instructions,
           questions: formData.questions, unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
-        });
+        };
+        if (selectedCourse?.isLiveCohort) payload.liveCourseId = selectedCourse._id;
+        else payload.courseId = formData.selectedCourseId;
+
+        await axios.post('/api/admin/feedback-forms', payload);
         toast.success('Form created');
       }
       setModalOpen(false);
@@ -491,7 +496,7 @@ const FeedbackManager = () => {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Feedback Forms</h2><p className="text-sm text-gray-500 mt-0.5">Manage feedback forms for live courses</p></div>
+        <div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Feedback Forms</h2><p className="text-sm text-gray-500 mt-0.5">Manage feedback forms for all courses</p></div>
         <Button className="font-bold flex items-center" onClick={openCreateModal}><FiPlus className="mr-2" /> Create Form</Button>
       </div>
 
@@ -515,7 +520,7 @@ const FeedbackManager = () => {
                     <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">{form.title}</h3>
                     <StatusBadge isUnlocked={form.isUnlocked} isActive={form.isActive} />
                   </div>
-                  <p className="text-xs text-gray-500 mb-2">Course: <span className="font-semibold text-gray-700 dark:text-gray-300">{form.liveCourse?.title || 'Unknown'}</span></p>
+                  <p className="text-xs text-gray-500 mb-2">Course: <span className="font-semibold text-gray-700 dark:text-gray-300">{form.liveCourse?.title || form.course?.title || 'Unknown'}</span> <span className="ml-1 text-[10px] uppercase font-bold text-gray-400">({form.liveCourse ? 'Live' : 'Normal'})</span></p>
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <span className="flex items-center"><FiUsers className="mr-1" size={12} />{form.stats?.totalEnrolled || 0} enrolled</span>
                     <span className="flex items-center"><FiCheckCircle className="mr-1" size={12} />{form.stats?.totalSubmissions || 0} submitted</span>
@@ -549,11 +554,11 @@ const FeedbackManager = () => {
               <div className="p-6 overflow-y-auto flex-1 space-y-5">
                 {!editingForm && (
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Live Course *</label>
-                    <select value={formData.liveCourseId} onChange={e => setFormData(p => ({ ...p, liveCourseId: e.target.value }))}
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Select Course *</label>
+                    <select value={formData.selectedCourseId} onChange={e => setFormData(p => ({ ...p, selectedCourseId: e.target.value }))}
                       className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none">
                       <option value="">-- Select Course --</option>
-                      {liveCourses.map(c => <option key={c._id} value={c._id}>{c.title} ({c.status})</option>)}
+                      {courseOptions.map(c => <option key={c._id} value={c._id}>{c.title} {c.isLiveCohort ? '(Live)' : '(Normal)'}</option>)}
                     </select>
                   </div>
                 )}

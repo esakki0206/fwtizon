@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiPlay, FiBookOpen, FiClock, FiStar, FiCheck, FiLock,
-  FiVideo, FiAward, FiChevronDown, FiChevronUp, FiUsers,
+  FiVideo, FiAward, FiChevronDown, FiChevronUp, FiUsers, FiLink,
 } from 'react-icons/fi';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -36,6 +36,8 @@ const CourseDetail = () => {
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
+  const [eligibleForFree, setEligibleForFree] = useState(false);
+  const [autoEnrolling, setAutoEnrolling] = useState(false);
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -69,6 +71,20 @@ const CourseDetail = () => {
     checkEnrollment();
   }, [user, course]);
 
+  // Check if user is eligible for free auto-enrollment via linked live course
+  useEffect(() => {
+    if (!user || !course || isEnrolled) return;
+    const checkFreeEligibility = async () => {
+      try {
+        const res = await axios.post('/api/enroll/check-eligibility', { courseId: course._id });
+        setEligibleForFree(res.data?.eligibleForFree === true);
+      } catch {
+        // Non-fatal — user simply won't see the free option
+      }
+    };
+    checkFreeEligibility();
+  }, [user, course, isEnrolled]);
+
   const toggleModule = (index) =>
     setExpandedModules((prev) => ({ ...prev, [index]: !prev[index] }));
 
@@ -93,6 +109,26 @@ const CourseDetail = () => {
   const removeCoupon = () => {
     setAppliedCoupon(null);
     setCouponCodeInput('');
+  };
+
+  // ── Auto-Enroll (Free via Live Course) ───────────────────────────────────
+  const handleAutoEnroll = async () => {
+    if (!user) {
+      toast.error('Please log in to enroll');
+      navigate('/login');
+      return;
+    }
+    try {
+      setAutoEnrolling(true);
+      await axios.post('/api/enroll/auto-enroll', { courseId: course._id });
+      toast.success('🎉 Enrolled for free via your live course!');
+      setIsEnrolled(true);
+      setTimeout(() => navigate(`/learn/${course.slug || course._id}`), 1200);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Auto-enrollment failed');
+    } finally {
+      setAutoEnrolling(false);
+    }
   };
 
   // ── Razorpay checkout flow ────────────────────────────────────────────────
@@ -524,8 +560,8 @@ const CourseDetail = () => {
                   </div>
                 )}
 
-                {/* Coupon Input */}
-                {!isEnrolled && (
+                {/* Coupon Input — only show when NOT eligible for free */}
+                {!isEnrolled && !eligibleForFree && (
                   <div className="mb-6">
                     {appliedCoupon ? (
                       <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg">
@@ -572,14 +608,27 @@ const CourseDetail = () => {
                   </Button>
                 ) : isEnrolled ? (
                   <Button
-                    asChild
+                    disabled
                     size="lg"
-                    className="w-full h-12 rounded-xl font-bold text-sm mb-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+                    className="w-full h-12 rounded-xl font-bold text-sm mb-4 bg-green-500 text-white opacity-100 cursor-default"
                   >
-                    <Link to={`/learn/${course.slug || course._id}`}>
-                      Continue Learning →
-                    </Link>
+                    <FiCheck className="mr-2" size={16} /> Enrolled
                   </Button>
+                ) : eligibleForFree ? (
+                  <>
+                    <div className="mb-3 flex items-center gap-2 text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-3 py-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                      <FiLink size={13} className="flex-shrink-0" />
+                      <span>You have free access via your live course enrollment!</span>
+                    </div>
+                    <Button
+                      onClick={handleAutoEnroll}
+                      disabled={autoEnrolling}
+                      size="lg"
+                      className="w-full h-12 rounded-xl font-bold text-sm shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.98] mb-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {autoEnrolling ? 'Enrolling…' : 'Enroll Free — Live Course Benefit'}
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     onClick={handleEnroll}

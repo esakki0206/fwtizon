@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   FiUsers, FiBookOpen, FiVideo, FiTrendingUp,
   FiCheckSquare, FiFileText, FiAward, FiActivity,
-  FiUserPlus, FiZap,
+  FiUserPlus, FiZap, FiLink,
 } from 'react-icons/fi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -346,6 +346,40 @@ const AdminDashboard = () => {
           <p className="text-[10px] text-gray-400 mt-0.5">registrations</p>
         </div>
       </div>
+
+      {/* ── Enrollment Type Split ── */}
+      {analytics?.enrollmentSplit && (analytics.enrollmentSplit.auto > 0 || analytics.enrollmentSplit.paid > 0 || analytics.enrollmentSplit.free > 0) && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <FiLink className="text-indigo-500" size={16} />
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Enrollment Type Split</h3>
+            <span className="text-[10px] text-gray-400 ml-auto">Normal courses only</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-900/15 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
+              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                {analytics.enrollmentSplit.auto}
+              </p>
+              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mt-1">Auto-Enrolled</p>
+              <p className="text-[9px] text-emerald-500/70 mt-0.5">Via Live Course Link</p>
+            </div>
+            <div className="text-center p-4 bg-indigo-50 dark:bg-indigo-900/15 rounded-xl border border-indigo-100 dark:border-indigo-800/40">
+              <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                {analytics.enrollmentSplit.paid}
+              </p>
+              <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mt-1">Paid</p>
+              <p className="text-[9px] text-indigo-500/70 mt-0.5">Razorpay Payment</p>
+            </div>
+            <div className="text-center p-4 bg-amber-50 dark:bg-amber-900/15 rounded-xl border border-amber-100 dark:border-amber-800/40">
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                {analytics.enrollmentSplit.free}
+              </p>
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mt-1">Free</p>
+              <p className="text-[9px] text-amber-500/70 mt-0.5">₹0 Courses / 100% Coupon</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

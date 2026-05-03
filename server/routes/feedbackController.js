@@ -27,7 +27,7 @@ const parseDateFilter = (value, boundary) => {
  * SINGLE SOURCE OF TRUTH: Helper to determine if a feedback form is unlocked.
  * Uses UTC server time for consistency.
  */
-export const isFormUnlocked = (form, liveCourse) => {
+export const isFormUnlocked = (form, courseObj) => {
   if (!form || !form.isActive) return false;
 
   const now = new Date(); // Server UTC time
@@ -43,12 +43,21 @@ export const isFormUnlocked = (form, liveCourse) => {
   }
 
   // Auto-unlock if course endDate has passed
-  if (liveCourse && liveCourse.endDate && new Date(liveCourse.endDate) <= now) {
+  if (courseObj && courseObj.endDate && new Date(courseObj.endDate) <= now) {
     return true;
   }
 
   // Check manual course completion status
-  return liveCourse && liveCourse.status === 'Completed';
+  if (courseObj && courseObj.status === 'Completed') {
+    return true;
+  }
+
+  // Normal courses don't have endDate/status, so the form is globally unlocked. User eligibility is checked via enrollment.
+  if (form.course) {
+    return true;
+  }
+
+  return false;
 };
 
 // ==============================
@@ -57,24 +66,23 @@ export const isFormUnlocked = (form, liveCourse) => {
 
 export const createFeedbackForm = async (req, res) => {
   try {
-    const { liveCourseId, title, instructions, questions, unlockDate, submissionDeadline } = req.body;
+    const { liveCourseId, courseId, title, instructions, questions, unlockDate, submissionDeadline } = req.body;
 
-    if (!liveCourseId || !title || !questions || !questions.length) {
-      return res.status(400).json({ success: false, message: 'liveCourseId, title, and at least one question are required' });
+    if ((!liveCourseId && !courseId) || !title || !questions || !questions.length) {
+      return res.status(400).json({ success: false, message: 'Course ID, title, and at least one question are required' });
     }
 
-    if (!isValidObjectId(liveCourseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid live course ID' });
+    let existing;
+    if (liveCourseId) {
+      if (!isValidObjectId(liveCourseId)) return res.status(400).json({ success: false, message: 'Invalid live course ID' });
+      existing = await FeedbackForm.findOne({ liveCourse: liveCourseId });
+    } else if (courseId) {
+      if (!isValidObjectId(courseId)) return res.status(400).json({ success: false, message: 'Invalid course ID' });
+      existing = await FeedbackForm.findOne({ course: courseId });
     }
 
-    const liveCourse = await LiveCourse.findById(liveCourseId);
-    if (!liveCourse) {
-      return res.status(404).json({ success: false, message: 'Live course not found' });
-    }
-
-    const existing = await FeedbackForm.findOne({ liveCourse: liveCourseId });
     if (existing) {
-      return res.status(400).json({ success: false, message: 'A feedback form already exists for this live course' });
+      return res.status(400).json({ success: false, message: 'A feedback form already exists for this course' });
     }
 
     // Validate questions structure
@@ -87,15 +95,19 @@ export const createFeedbackForm = async (req, res) => {
       }
     }
 
-    const form = await FeedbackForm.create({
-      liveCourse: liveCourseId,
+    const formPayload = {
       title: title.trim(),
       instructions: instructions?.trim() || '',
       questions,
       unlockDate: unlockDate || null,
       submissionDeadline: submissionDeadline || null,
       createdBy: req.user.id,
-    });
+    };
+
+    if (liveCourseId) formPayload.liveCourse = liveCourseId;
+    if (courseId) formPayload.course = courseId;
+
+    const form = await FeedbackForm.create(formPayload);
 
     res.status(201).json({ success: true, data: form });
   } catch (error) {
@@ -153,6 +165,7 @@ export const getAllFeedbackForms = async (req, res) => {
   try {
     const forms = await FeedbackForm.find()
       .populate('liveCourse', 'title status startDate endDate')
+      .populate('course', 'title')
       .populate('createdBy', 'name')
       .sort('-createdAt')
       .lean();
@@ -160,13 +173,14 @@ export const getAllFeedbackForms = async (req, res) => {
     // Attach submission stats for each form
     const formsWithStats = await Promise.all(forms.map(async (form) => {
       const totalSubmissions = await FeedbackSubmission.countDocuments({ feedbackForm: form._id });
-      const totalEnrolled = await Enrollment.countDocuments({
-        liveCourse: form.liveCourse?._id,
-        status: { $in: ['active', 'completed'] },
-      });
+      const enrollmentQuery = form.liveCourse 
+        ? { liveCourse: form.liveCourse._id, status: { $in: ['active', 'completed'] } }
+        : { course: form.course?._id, status: { $in: ['active', 'completed'] } };
+
+      const totalEnrolled = await Enrollment.countDocuments(enrollmentQuery);
 
       // Determine unlock status using the single source of truth function
-      const isUnlocked = isFormUnlocked(form, form.liveCourse);
+      const isUnlocked = isFormUnlocked(form, form.liveCourse || form.course);
 
       return {
         ...form,
@@ -195,6 +209,7 @@ export const getFeedbackFormById = async (req, res) => {
 
     const form = await FeedbackForm.findById(id)
       .populate('liveCourse', 'title status startDate endDate domain areaOfExpertise')
+      .populate('course', 'title category domain areaOfExpertise')
       .populate('createdBy', 'name');
 
     if (!form) {
@@ -257,7 +272,7 @@ export const getFormResponses = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid form ID' });
     }
 
-    const form = await FeedbackForm.findById(id).populate('liveCourse', 'title').lean();
+    const form = await FeedbackForm.findById(id).populate('liveCourse', 'title').populate('course', 'title').lean();
     if (!form) {
       return res.status(404).json({ success: false, message: 'Feedback form not found' });
     }
@@ -268,10 +283,11 @@ export const getFormResponses = async (req, res) => {
       .lean();
 
     // Get all enrolled students for this course to show who hasn't submitted
-    const enrollments = await Enrollment.find({
-      liveCourse: form.liveCourse?._id,
-      status: { $in: ['active', 'completed'] },
-    }).populate('user', 'name email avatar').lean();
+    const enrollmentQuery = form.liveCourse
+      ? { liveCourse: form.liveCourse._id, status: { $in: ['active', 'completed'] } }
+      : { course: form.course?._id, status: { $in: ['active', 'completed'] } };
+
+    const enrollments = await Enrollment.find(enrollmentQuery).populate('user', 'name email avatar').lean();
 
     const submittedUserIds = new Set(submissions.map(s => s.user?._id?.toString()));
     const pendingStudents = enrollments
@@ -341,9 +357,9 @@ export const getCourseFeedbackSummary = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid course ID' });
       }
       // When a specific ID is selected, we filter Review by 'course' 
-      // and FeedbackSubmission by 'liveCourse'. 
+      // and FeedbackSubmission by either 'liveCourse' or 'course'
       reviewMatch.course = courseId;
-      subMatch.liveCourse = courseId;
+      subMatch.$or = [{ liveCourse: courseId }, { course: courseId }];
     }
 
     if (queryRating) {
@@ -373,6 +389,7 @@ export const getCourseFeedbackSummary = async (req, res) => {
         .populate('feedbackForm')
         .populate('user', 'name email avatar')
         .populate('liveCourse', 'title')
+        .populate('course', 'title')
         .sort('-createdAt')
         .lean(),
     ]);
@@ -401,7 +418,7 @@ export const getCourseFeedbackSummary = async (req, res) => {
         rating: ratingVal,
         comment: commentVal,
         user: sub.user,
-        course: sub.liveCourse || { title: 'Unknown Live Course' },
+        course: sub.liveCourse || sub.course || { title: 'Unknown Course' },
         createdAt: sub.createdAt,
         isSubmission: true,
         formTitle: form.title,
@@ -496,11 +513,14 @@ export const getMyFeedbackForms = async (req, res) => {
     // Find all live course enrollments for this user
     const enrollments = await Enrollment.find({
       user: req.user.id,
-      liveCourse: { $exists: true, $ne: null },
+      $or: [{ liveCourse: { $exists: true, $ne: null } }, { course: { $exists: true, $ne: null } }],
       status: { $in: ['active', 'completed'] },
     }).populate({
       path: 'liveCourse',
       select: 'title status startDate endDate thumbnail',
+    }).populate({
+      path: 'course',
+      select: 'title thumbnail category domain areaOfExpertise',
     }).lean();
 
     if (!enrollments.length) {
@@ -508,12 +528,16 @@ export const getMyFeedbackForms = async (req, res) => {
     }
 
     const liveCourseIds = enrollments.map(e => e.liveCourse?._id).filter(Boolean);
+    const courseIds = enrollments.map(e => e.course?._id).filter(Boolean);
 
     // Find feedback forms for enrolled courses
     const forms = await FeedbackForm.find({
-      liveCourse: { $in: liveCourseIds },
+      $or: [
+        { liveCourse: { $in: liveCourseIds } },
+        { course: { $in: courseIds } }
+      ],
       isActive: true,
-    }).populate('liveCourse', 'title status startDate endDate thumbnail').lean();
+    }).populate('liveCourse', 'title status startDate endDate thumbnail').populate('course', 'title thumbnail').lean();
 
     // Check submission status for each form
     const existingSubmissions = await FeedbackSubmission.find({
@@ -526,22 +550,30 @@ export const getMyFeedbackForms = async (req, res) => {
     // Check certificate status
     const certificates = await Certificate.find({
       user: req.user.id,
-      liveCourse: { $in: liveCourseIds },
-      type: 'COHORT',
-    }).select('liveCourse certificateId').lean();
+      $or: [
+        { liveCourse: { $in: liveCourseIds } },
+        { course: { $in: courseIds } }
+      ]
+    }).select('liveCourse course certificateId').lean();
 
-    const certMap = new Map(certificates.map(c => [c.liveCourse.toString(), c]));
+    const certMap = new Map();
+    certificates.forEach(c => {
+      if (c.liveCourse) certMap.set(c.liveCourse.toString(), c);
+      if (c.course) certMap.set(c.course.toString(), c);
+    });
 
     const result = forms.map(form => {
-      const unlocked = isFormUnlocked(form, form.liveCourse);
+      const courseObj = form.liveCourse || form.course;
+      const unlocked = isFormUnlocked(form, courseObj);
       const submission = submissionMap.get(form._id.toString());
-      const cert = certMap.get(form.liveCourse._id.toString());
+      const cert = certMap.get(courseObj?._id?.toString());
 
       return {
         _id: form._id,
         title: form.title,
         instructions: form.instructions,
         liveCourse: form.liveCourse,
+        course: form.course,
         questionCount: form.questions.length,
         isUnlocked: unlocked,
         isSubmitted: !!submission,
@@ -576,7 +608,7 @@ export const getFeedbackForm = async (req, res) => {
     // Verify enrollment
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      liveCourse: liveCourseId,
+      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
       status: { $in: ['active', 'completed'] },
     });
 
@@ -585,23 +617,30 @@ export const getFeedbackForm = async (req, res) => {
     }
 
     const liveCourse = await LiveCourse.findById(liveCourseId).select('title status startDate endDate');
-    if (!liveCourse) {
-      return res.status(404).json({ success: false, message: 'Live course not found' });
+    const course = await mongoose.model('Course').findById(liveCourseId).select('title status');
+    const courseObj = liveCourse || course;
+
+    if (!courseObj) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
-    const form = await FeedbackForm.findOne({ liveCourse: liveCourseId, isActive: true });
+    const form = await FeedbackForm.findOne({
+      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
+      isActive: true
+    });
+
     if (!form) {
       return res.status(404).json({ success: false, message: 'No feedback form available for this course' });
     }
 
-    const unlocked = isFormUnlocked(form, liveCourse);
+    const unlocked = isFormUnlocked(form, courseObj);
     if (!unlocked) {
       return res.status(200).json({
         success: true,
         data: {
           _id: form._id,
           title: form.title,
-          liveCourse: { _id: liveCourse._id, title: liveCourse.title, status: liveCourse.status },
+          course: { _id: courseObj._id, title: courseObj.title, status: courseObj.status },
           isUnlocked: false,
           message: 'This feedback form is not yet available. It will unlock after the course is completed.',
         },
@@ -611,15 +650,17 @@ export const getFeedbackForm = async (req, res) => {
     // Check if already submitted
     const existingSubmission = await FeedbackSubmission.findOne({ feedbackForm: form._id, user: req.user.id });
     if (existingSubmission) {
-      const cert = await Certificate.findOne({ user: req.user.id, liveCourse: liveCourseId, type: 'COHORT' })
-        .select('certificateId');
+      const cert = await Certificate.findOne({ 
+        user: req.user.id, 
+        $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }] 
+      }).select('certificateId');
 
       return res.status(200).json({
         success: true,
         data: {
           _id: form._id,
           title: form.title,
-          liveCourse: { _id: liveCourse._id, title: liveCourse.title, status: liveCourse.status },
+          course: { _id: courseObj._id, title: courseObj.title, status: courseObj.status },
           isUnlocked: true,
           isSubmitted: true,
           submittedAt: existingSubmission.submittedAt,
@@ -640,7 +681,7 @@ export const getFeedbackForm = async (req, res) => {
         title: form.title,
         instructions: form.instructions,
         questions: form.questions,
-        liveCourse: { _id: liveCourse._id, title: liveCourse.title, status: liveCourse.status },
+        course: { _id: courseObj._id, title: courseObj.title, status: courseObj.status },
         isUnlocked: true,
         isSubmitted: false,
         submissionDeadline: form.submissionDeadline,
@@ -676,21 +717,24 @@ export const submitFeedback = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Feedback form not found or inactive' });
     }
 
-    // Get the live course
-    const liveCourse = await LiveCourse.findById(form.liveCourse);
-    if (!liveCourse) {
-      return res.status(404).json({ success: false, message: 'Associated live course not found' });
+    // Get the course
+    const liveCourse = form.liveCourse ? await LiveCourse.findById(form.liveCourse) : null;
+    const course = form.course ? await mongoose.model('Course').findById(form.course) : null;
+    const courseObj = liveCourse || course;
+
+    if (!courseObj) {
+      return res.status(404).json({ success: false, message: 'Associated course not found' });
     }
 
     // Verify unlock status
-    if (!isFormUnlocked(form, liveCourse)) {
+    if (!isFormUnlocked(form, courseObj)) {
       return res.status(403).json({ success: false, message: 'This feedback form is not yet available' });
     }
 
     // Verify enrollment
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      liveCourse: liveCourse._id,
+      $or: [{ liveCourse: courseObj._id }, { course: courseObj._id }],
       status: { $in: ['active', 'completed'] },
     });
 
@@ -736,14 +780,17 @@ export const submitFeedback = async (req, res) => {
       }
     }
 
-    // Create submission
-    const submission = await FeedbackSubmission.create({
+    // Create submission payload
+    const submissionPayload = {
       feedbackForm: formId,
       user: req.user.id,
-      liveCourse: liveCourse._id,
       enrollment: enrollment._id,
       responses,
-    });
+    };
+    if (liveCourse) submissionPayload.liveCourse = liveCourse._id;
+    if (course) submissionPayload.course = course._id;
+
+    const submission = await FeedbackSubmission.create(submissionPayload);
 
     // ── Auto-generate certificate ──
     let certificateData = null;
@@ -751,8 +798,7 @@ export const submitFeedback = async (req, res) => {
       // Check if certificate already exists
       const existingCert = await Certificate.findOne({
         user: req.user.id,
-        liveCourse: liveCourse._id,
-        type: 'COHORT',
+        $or: [{ liveCourse: courseObj._id }, { course: courseObj._id }],
       });
 
       if (!existingCert) {
@@ -763,9 +809,9 @@ export const submitFeedback = async (req, res) => {
 
         const pdfData = {
           studentName: req.user.name,
-          courseName: liveCourse.title,
-          domain: liveCourse.domain || 'Professional Development',
-          areaOfExpertise: liveCourse.areaOfExpertise || 'Specialized Training',
+          courseName: courseObj.title,
+          domain: courseObj.domain || courseObj.category || 'Professional Development',
+          areaOfExpertise: courseObj.areaOfExpertise || 'Specialized Training',
           completionDate: new Date(),
           certificateId,
           serialNumber,
@@ -778,13 +824,12 @@ export const submitFeedback = async (req, res) => {
           'fwtion/certificates'
         );
 
-        const cert = await Certificate.create({
+        const certPayload = {
           certificateId,
           user: req.user.id,
-          liveCourse: liveCourse._id,
           studentName: req.user.name,
           studentEmail: req.user.email,
-          courseName: liveCourse.title,
+          courseName: courseObj.title,
           domain: pdfData.domain,
           areaOfExpertise: pdfData.areaOfExpertise,
           issueDate: new Date(),
@@ -792,8 +837,12 @@ export const submitFeedback = async (req, res) => {
           serialNumber,
           fileUrl,
           enrollment: enrollment._id,
-          type: 'COHORT',
-        });
+          type: liveCourse ? 'COHORT' : 'NORMAL',
+        };
+        if (liveCourse) certPayload.liveCourse = liveCourse._id;
+        if (course) certPayload.course = course._id;
+
+        const cert = await Certificate.create(certPayload);
 
         // Update enrollment
         enrollment.certificateId = cert.certificateId;
@@ -813,7 +862,7 @@ export const submitFeedback = async (req, res) => {
         await Notification.create({
           user: req.user.id,
           type: 'system',
-          message: `Your certificate for "${liveCourse.title}" is ready! Download it from your dashboard.`,
+          message: `Your certificate for "${courseObj.title}" is ready! Download it from your dashboard.`,
           link: '/dashboard/certificates',
         });
       } else {
@@ -860,7 +909,7 @@ export const getFeedbackStatus = async (req, res) => {
     // Verify enrollment
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      liveCourse: liveCourseId,
+      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
       status: { $in: ['active', 'completed'] },
     });
 
@@ -872,7 +921,13 @@ export const getFeedbackStatus = async (req, res) => {
     }
 
     const liveCourse = await LiveCourse.findById(liveCourseId).select('title status endDate');
-    const form = await FeedbackForm.findOne({ liveCourse: liveCourseId, isActive: true }).select('_id title unlockDate submissionDeadline isActive');
+    const course = await mongoose.model('Course').findById(liveCourseId).select('title status');
+    const courseObj = liveCourse || course;
+
+    const form = await FeedbackForm.findOne({ 
+      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }], 
+      isActive: true 
+    }).select('_id title unlockDate submissionDeadline isActive course');
 
     if (!form) {
       return res.status(200).json({
@@ -881,9 +936,12 @@ export const getFeedbackStatus = async (req, res) => {
       });
     }
 
-    const unlocked = liveCourse ? isFormUnlocked(form, liveCourse) : false;
+    const unlocked = isFormUnlocked(form, courseObj);
     const submission = await FeedbackSubmission.findOne({ feedbackForm: form._id, user: req.user.id }).select('submittedAt');
-    const cert = await Certificate.findOne({ user: req.user.id, liveCourse: liveCourseId, type: 'COHORT' }).select('certificateId');
+    const cert = await Certificate.findOne({ 
+      user: req.user.id, 
+      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }] 
+    }).select('certificateId');
 
     res.status(200).json({
       success: true,

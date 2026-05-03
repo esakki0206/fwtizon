@@ -25,7 +25,10 @@ const feedbackSubmissionSchema = new mongoose.Schema({
   liveCourse: {
     type: mongoose.Schema.ObjectId,
     ref: 'LiveCourse',
-    required: [true, 'Live course reference is required'],
+  },
+  course: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Course',
   },
   enrollment: {
     type: mongoose.Schema.ObjectId,
@@ -52,8 +55,9 @@ const feedbackSubmissionSchema = new mongoose.Schema({
 // Prevent duplicate submissions: one submission per user per form
 feedbackSubmissionSchema.index({ feedbackForm: 1, user: 1 }, { unique: true });
 
-// Fast lookup by liveCourse + user
+// Fast lookup by course + user
 feedbackSubmissionSchema.index({ liveCourse: 1, user: 1 });
+feedbackSubmissionSchema.index({ course: 1, user: 1 });
 
 const FeedbackSubmission = mongoose.model('FeedbackSubmission', feedbackSubmissionSchema);
 export default FeedbackSubmission;

@@ -43,15 +43,16 @@ const Dashboard = () => {
     fetchDashboardData();
   }, []);
 
-  // Fetch feedback statuses for all live enrollments
-  const fetchFeedbackStatuses = useCallback(async (liveEnrolls) => {
+  // Fetch feedback statuses for all enrollments
+  const fetchFeedbackStatuses = useCallback(async (allEnrolls) => {
     const statuses = {};
     await Promise.all(
-      liveEnrolls.map(async (en) => {
-        if (!en.liveCourse?._id) return;
+      allEnrolls.map(async (en) => {
+        const targetId = en.liveCourse?._id || en.course?._id;
+        if (!targetId) return;
         try {
-          const res = await axios.get(`/api/feedback/status/${en.liveCourse._id}`);
-          statuses[en.liveCourse._id] = res.data.data;
+          const res = await axios.get(`/api/feedback/status/${targetId}`);
+          statuses[targetId] = res.data.data;
         } catch { /* silent */ }
       })
     );
@@ -59,24 +60,43 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    const liveEnrolls = enrollments.filter(e => e.liveCourse);
-    if (liveEnrolls.length > 0) fetchFeedbackStatuses(liveEnrolls);
+    if (enrollments.length > 0) fetchFeedbackStatuses(enrollments);
   }, [enrollments, fetchFeedbackStatuses]);
 
-  const openFeedbackModal = async (liveCourseId) => {
+  const openFeedbackModal = async (targetId) => {
     try {
-      const res = await axios.get(`/api/feedback/form/${liveCourseId}`);
+      const res = await axios.get(`/api/feedback/form/${targetId}`);
       if (res.data.data?.isSubmitted) { toast('Already submitted!'); return; }
       if (!res.data.data?.isUnlocked) { toast('Form not available yet'); return; }
       setActiveFeedbackForm(res.data.data);
-      setActiveLiveCourseId(liveCourseId);
+      setActiveLiveCourseId(targetId);
       setFeedbackModalOpen(true);
     } catch (err) { toast.error(err.response?.data?.message || 'Could not load feedback form'); }
   };
 
   const handleFeedbackSuccess = () => {
-    const liveEnrolls = enrollments.filter(e => e.liveCourse);
-    fetchFeedbackStatuses(liveEnrolls);
+    fetchFeedbackStatuses(enrollments);
+  };
+
+  const handleDownloadCertificate = async (certificate) => {
+    const toastId = toast.loading('Preparing download…');
+    try {
+      const url = `${BACKEND_BASE}${certificate.downloadUrl}`;
+      const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${certificate.certificateId || 'certificate'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      toast.success('Download started!', { id: toastId });
+    } catch (err) {
+      console.error('Certificate download error:', err);
+      toast.error('Download failed. Please try again.', { id: toastId });
+    }
   };
 
   if (loading) return (
@@ -293,7 +313,14 @@ const Dashboard = () => {
           {courseEnrollments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {courseEnrollments.map((en, index) => (
-                <CourseCard key={en._id} enrollment={en} index={index} />
+                <CourseCard 
+                  key={en._id} 
+                  enrollment={en} 
+                  index={index} 
+                  feedbackStatus={feedbackStatuses[en.course?._id]}
+                  onFeedbackClick={() => openFeedbackModal(en.course?._id)}
+                  onDownloadClick={handleDownloadCertificate}
+                />
               ))}
             </div>
           ) : (
@@ -361,26 +388,7 @@ const Dashboard = () => {
                               </div>
                               {fbStatus.certificate && (
                                 <button
-                                  onClick={async () => {
-                                    const toastId = toast.loading('Preparing download…');
-                                    try {
-                                      const url = `${BACKEND_BASE}${fbStatus.certificate.downloadUrl}`;
-                                      const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
-                                      const blob = new Blob([res.data], { type: 'application/pdf' });
-                                      const blobUrl = URL.createObjectURL(blob);
-                                      const link = document.createElement('a');
-                                      link.href = blobUrl;
-                                      link.download = `${fbStatus.certificate.certificateId || 'certificate'}.pdf`;
-                                      document.body.appendChild(link);
-                                      link.click();
-                                      link.remove();
-                                      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-                                      toast.success('Download started!', { id: toastId });
-                                    } catch (err) {
-                                      console.error('Certificate download error:', err);
-                                      toast.error('Download failed. Please try again.', { id: toastId });
-                                    }
-                                  }}
+                                  onClick={() => handleDownloadCertificate(fbStatus.certificate)}
                                   className="w-full flex items-center justify-center py-2.5 px-4 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 transition-colors">
                                   <FiDownload className="mr-2" /> Download Certificate
                                 </button>

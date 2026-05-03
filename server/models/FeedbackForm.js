@@ -25,8 +25,10 @@ const feedbackFormSchema = new mongoose.Schema({
   liveCourse: {
     type: mongoose.Schema.ObjectId,
     ref: 'LiveCourse',
-    required: [true, 'Live course reference is required'],
-    unique: true,
+  },
+  course: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Course',
   },
   title: {
     type: String,
@@ -70,8 +72,9 @@ const feedbackFormSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// One feedback form per live course
-feedbackFormSchema.index({ liveCourse: 1 }, { unique: true });
+// Ensure a feedback form is unique per liveCourse OR course, but allow multiple nulls
+feedbackFormSchema.index({ liveCourse: 1 }, { unique: true, sparse: true });
+feedbackFormSchema.index({ course: 1 }, { unique: true, sparse: true });
 
 const FeedbackForm = mongoose.model('FeedbackForm', feedbackFormSchema);
 export default FeedbackForm;

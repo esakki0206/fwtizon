@@ -20,6 +20,11 @@ const enrollmentSchema = new mongoose.Schema({
   amount: {
     type: Number,
   },
+  enrollmentType: {
+    type: String,
+    enum: ['auto', 'paid', 'free'],
+    default: 'paid',
+  },
   status: {
     type: String,
     enum: ['active', 'completed', 'cancelled'],

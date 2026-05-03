@@ -2,6 +2,8 @@ import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import Course from '../models/Course.js';
+import Module from '../models/Module.js';
+import Lesson from '../models/Lesson.js';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
 import LiveCourse from '../models/LiveCourse.js';
@@ -220,6 +222,25 @@ router.get('/analytics', protect, authorize('admin'), async (req, res) => {
       totalMemory: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
     };
 
+    // ── Enrollment type split (auto vs paid vs free) ──
+    const enrollmentTypeSplit = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] }, course: { $ne: null } } },
+      { $group: { _id: '$enrollmentType', count: { $sum: 1 } } },
+    ]);
+    const enrollmentSplit = {
+      auto: 0,
+      paid: 0,
+      free: 0,
+    };
+    enrollmentTypeSplit.forEach(item => {
+      if (item._id && enrollmentSplit.hasOwnProperty(item._id)) {
+        enrollmentSplit[item._id] = item.count;
+      } else {
+        // Legacy records without enrollmentType default to 'paid'
+        enrollmentSplit.paid += item.count;
+      }
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -239,6 +260,7 @@ router.get('/analytics', protect, authorize('admin'), async (req, res) => {
         categoryDistribution,
         monthlyRevenue: formattedMonthlyRevenue,
         monthlyEnrollments: formattedMonthlyEnrollments,
+        enrollmentSplit,
       },
     });
   } catch (error) {
@@ -1907,7 +1929,7 @@ router.get('/courses', protect, authorize('admin'), async (req, res) => {
  */
 router.post('/courses', protect, authorize('admin'), async (req, res) => {
   try {
-    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto } = req.body;
+    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto, linkedLiveCourseId } = req.body;
 
     // Validation
     if (!title || !title.trim()) {
@@ -1936,6 +1958,7 @@ router.post('/courses', protect, authorize('admin'), async (req, res) => {
       instructorName: instructorName.trim(),
       instructorPhoto: instructorPhoto || '',
       instructor: req.user.id,
+      linkedLiveCourseId: linkedLiveCourseId || null,
     };
 
     const course = await Course.create(courseData);
@@ -1962,7 +1985,7 @@ router.put('/courses/:id', protect, authorize('admin'), async (req, res) => {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
-    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto } = req.body;
+    const { title, description, price, category, status, thumbnail, instructorName, instructorPhoto, linkedLiveCourseId } = req.body;
 
     // Validation
     if (title !== undefined && !title.trim()) {
@@ -1984,6 +2007,8 @@ router.put('/courses/:id', protect, authorize('admin'), async (req, res) => {
     if (thumbnail !== undefined) allowedUpdates.thumbnail = thumbnail;
     if (instructorName !== undefined) allowedUpdates.instructorName = instructorName.trim();
     if (instructorPhoto !== undefined) allowedUpdates.instructorPhoto = instructorPhoto;
+    // Allow linking/unlinking a live course (null clears it)
+    if (linkedLiveCourseId !== undefined) allowedUpdates.linkedLiveCourseId = linkedLiveCourseId || null;
 
     const updated = await Course.findByIdAndUpdate(
       req.params.id,
@@ -2005,6 +2030,35 @@ router.put('/courses/:id', protect, authorize('admin'), async (req, res) => {
 });
 
 /**
+ * @desc    Toggle course status (Draft/Published)
+ * @route   PATCH /api/admin/courses/:id/toggle-status
+ * @access  Private/Admin
+ */
+router.patch('/courses/:id/toggle-status', protect, authorize('admin'), async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    course.status = course.status === 'published' ? 'draft' : 'published';
+    await course.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      data: { _id: course._id, status: course.status },
+      message: `Course is now ${course.status}`
+    });
+  } catch (error) {
+    console.error('Admin toggle course status error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * @desc    Delete a course as admin
  * @route   DELETE /api/admin/courses/:id
  * @access  Private/Admin
@@ -2021,6 +2075,147 @@ router.delete('/courses/:id', protect, authorize('admin'), async (req, res) => {
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     console.error('Admin delete course error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Get a single course with full curriculum (modules + lessons) for the admin editor
+ * @route   GET /api/admin/courses/:id/full
+ * @access  Private/Admin
+ */
+router.get('/courses/:id/full', protect, authorize('admin'), async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
+    const course = await Course.findById(req.params.id)
+      .populate({
+        path: 'modules',
+        options: { sort: { order: 1 } },
+        populate: {
+          path: 'lessons',
+          options: { sort: { order: 1 } },
+        },
+      })
+      .lean();
+
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    res.status(200).json({ success: true, data: course });
+  } catch (error) {
+    console.error('Admin get full course error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Bulk update curriculum (modules and lessons) for a course
+ * @route   PUT /api/admin/courses/:id/modules
+ * @access  Private/Admin
+ */
+router.put('/courses/:id/modules', protect, authorize('admin'), async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    if (!isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    const { modules } = req.body;
+    if (!Array.isArray(modules)) {
+      return res.status(400).json({ success: false, message: 'Modules must be an array' });
+    }
+
+    // Process modules
+    const updatedModulesData = [];
+    for (let mIdx = 0; mIdx < modules.length; mIdx++) {
+      const modData = modules[mIdx];
+      let moduleDoc;
+
+      if (modData._id && isValidObjectId(modData._id)) {
+        // Update existing module
+        moduleDoc = await Module.findByIdAndUpdate(
+          modData._id,
+          { title: modData.title, order: mIdx },
+          { new: true }
+        );
+      } else {
+        // Create new module
+        moduleDoc = await Module.create({
+          title: modData.title || 'New Module',
+          course: courseId,
+          order: mIdx,
+        });
+      }
+
+      if (!moduleDoc) continue;
+
+      // Process lessons for this module
+      const lessonsData = modData.lessons || [];
+      const currentLessonIds = [];
+
+      for (let lIdx = 0; lIdx < lessonsData.length; lIdx++) {
+        const lessData = lessonsData[lIdx];
+        let lessonDoc;
+
+        const lessonPayload = {
+          title: lessData.title || 'New Lesson',
+          module: moduleDoc._id,
+          type: lessData.type || 'video',
+          content: lessData.content || '',
+          description: lessData.description || '',
+          zoomEmbedLink: lessData.zoomEmbedLink || '',
+          zoomPassword: lessData.zoomPassword || '',
+          duration: lessData.duration || 0,
+          order: lIdx,
+          isPreview: lessData.isPreview || false,
+          resources: lessData.resources || [],
+        };
+
+        if (lessData._id && isValidObjectId(lessData._id)) {
+          // Update existing lesson
+          lessonDoc = await Lesson.findByIdAndUpdate(lessData._id, lessonPayload, { new: true });
+        } else {
+          // Create new lesson
+          lessonDoc = await Lesson.create(lessonPayload);
+        }
+
+        if (lessonDoc) {
+          currentLessonIds.push(lessonDoc._id);
+        }
+      }
+
+      // Cleanup removed lessons in this module
+      if (modData._id) {
+        await Lesson.deleteMany({
+          module: moduleDoc._id,
+          _id: { $nin: currentLessonIds }
+        });
+      }
+
+      updatedModulesData.push({ ...moduleDoc.toObject(), lessons: currentLessonIds });
+    }
+
+    // Cleanup removed modules for this course
+    const currentModuleIds = updatedModulesData.map(m => m._id);
+    const modulesToDelete = await Module.find({ course: courseId, _id: { $nin: currentModuleIds } });
+    
+    for (const mod of modulesToDelete) {
+      await Lesson.deleteMany({ module: mod._id });
+      await mod.deleteOne();
+    }
+
+    res.status(200).json({ success: true, message: 'Curriculum updated successfully' });
+  } catch (error) {
+    console.error('Admin bulk update curriculum error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

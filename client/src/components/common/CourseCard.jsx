@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FiStar, FiClock, FiBookOpen, FiPlayCircle, FiCheckCircle, FiUsers } from 'react-icons/fi';
+import { FiStar, FiClock, FiBookOpen, FiPlayCircle, FiCheckCircle, FiUsers, FiMessageSquare, FiDownload, FiLock } from 'react-icons/fi';
 import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { motion } from 'framer-motion';
@@ -27,7 +27,7 @@ const resolveInstructor = (data) => {
   return { name, photo };
 };
 
-const CourseCard = ({ course, enrollment, index = 0 }) => {
+const CourseCard = ({ course, enrollment, index = 0, feedbackStatus, onFeedbackClick, onDownloadClick }) => {
   const isEnrolled = !!enrollment;
   const data = isEnrolled ? enrollment.course : course;
   const percentComplete = isEnrolled ? (enrollment.progress?.percentComplete || 0) : 0;
@@ -169,14 +169,49 @@ const CourseCard = ({ course, enrollment, index = 0 }) => {
               </Button>
             </div>
           ) : (
-            <div className="flex items-center justify-between w-full text-[10px] font-medium text-gray-500 dark:text-gray-400">
-              <span className="flex items-center">
-                <FiCheckCircle className="mr-1 text-green-500" size={12} />
-                {enrollment.progress?.completedLessons?.length || 0} Lessons Done
-              </span>
-              <span className="flex items-center">
-                <FiBookOpen className="mr-1" size={12} /> Continue
-              </span>
+            <div className="flex flex-col w-full space-y-3">
+              <div className="flex items-center justify-between w-full text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                <span className="flex items-center">
+                  <FiCheckCircle className="mr-1 text-green-500" size={12} />
+                  {enrollment.progress?.completedLessons?.length || 0} Lessons Done
+                </span>
+                {percentComplete < 100 && (
+                  <span className="flex items-center">
+                    <FiBookOpen className="mr-1" size={12} /> Continue
+                  </span>
+                )}
+              </div>
+              
+              {/* Feedback / Certificate logic inside Card */}
+              {percentComplete === 100 && feedbackStatus?.formAvailable && (
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 w-full">
+                  {feedbackStatus.isSubmitted ? (
+                    <div className="space-y-2 w-full">
+                      <div className="flex items-center justify-center text-[10px] text-green-600 dark:text-green-400 font-bold w-full">
+                        <FiCheckCircle className="mr-1" size={12} /> Feedback submitted
+                      </div>
+                      {feedbackStatus.certificate && (
+                        <Button 
+                          onClick={() => onDownloadClick?.(feedbackStatus.certificate)}
+                          className="w-full h-8 text-xs font-bold rounded-lg shadow-sm">
+                          <FiDownload className="mr-1.5" size={12} /> Download Certificate
+                        </Button>
+                      )}
+                    </div>
+                  ) : feedbackStatus.isUnlocked ? (
+                    <Button 
+                      variant="outline"
+                      onClick={() => onFeedbackClick?.()}
+                      className="w-full h-8 text-[10px] font-bold rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800/50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                      <FiMessageSquare className="mr-1.5" size={12} /> Give Feedback & Get Certificate
+                    </Button>
+                  ) : (
+                    <div className="flex items-center justify-center text-[10px] text-gray-400 font-medium py-1">
+                      <FiLock className="mr-1" size={10} /> Feedback locked
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </CardFooter>

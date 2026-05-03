@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiChevronLeft, FiChevronRight, FiPlayCircle, FiCheckCircle, FiFileText, FiMenu, FiX, FiList, FiClock, FiDownload } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiPlayCircle, FiCheckCircle, FiFileText, FiMenu, FiX, FiList, FiClock, FiDownload, FiVideo } from 'react-icons/fi';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/button';
+import DOMPurify from 'dompurify';
+import FeedbackFormModal from '../../components/modals/FeedbackFormModal';
 
 const CoursePlayer = () => {
   const { id } = useParams();
@@ -16,15 +18,23 @@ const CoursePlayer = () => {
   const [completedLessons, setCompletedLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackData, setFeedbackData] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(`/api/courses/${id}`);
+        // SECURITY FIX: Use the protected content endpoint
+        const res = await axios.get(`/api/courses/${id}/content`);
         setCourse(res.data.data);
       } catch (err) {
-        toast.error('Failed to load course content');
-        navigate('/dashboard');
+        if (err.response && err.response.status === 403) {
+          toast.error('You are not enrolled in this course.');
+          navigate(`/courses/${id}`);
+        } else {
+          toast.error('Failed to load course content');
+          navigate('/dashboard');
+        }
       } finally {
         setLoading(false);
       }
@@ -63,7 +73,92 @@ const CoursePlayer = () => {
 
   const currentModule = course.modules[activeModuleIndex];
   const currentLesson = currentModule?.lessons?.[activeLessonIndex];
-  const isVideo = currentLesson?.type === 'video';
+
+  // Render different content types securely
+  const renderContent = () => {
+    if (!currentLesson) return null;
+
+    switch (currentLesson.type) {
+      case 'video':
+        return currentLesson.content ? (
+          <video src={currentLesson.content} controls className="w-full h-full object-contain" poster={course.thumbnail} controlsList="nodownload" />
+        ) : (
+          <div className="text-gray-500 flex flex-col items-center">
+            <FiPlayCircle size={56} className="mb-3 opacity-40 text-white" />
+            <span className="text-white font-medium text-sm">Video Source Not Available</span>
+          </div>
+        );
+
+      case 'external_video':
+        return currentLesson.content ? (
+          <iframe
+            src={currentLesson.content}
+            className="w-full h-full"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          ></iframe>
+        ) : (
+          <div className="text-gray-500 flex flex-col items-center">
+            <FiPlayCircle size={56} className="mb-3 opacity-40 text-white" />
+            <span className="text-white font-medium text-sm">Video URL Not Provided</span>
+          </div>
+        );
+
+      case 'zoom':
+        return currentLesson.zoomEmbedLink ? (
+          <div className="w-full h-full flex flex-col">
+            <div className="bg-gray-900 text-white p-2 text-xs flex justify-between items-center z-10 relative">
+              <span>Zoom Session</span>
+              {currentLesson.zoomPassword && (
+                <span className="bg-gray-800 px-2 py-1 rounded select-all cursor-text font-mono">
+                  Passcode: {currentLesson.zoomPassword}
+                </span>
+              )}
+            </div>
+            <iframe
+              src={currentLesson.zoomEmbedLink}
+              className="w-full flex-1"
+              allow="microphone; camera; display-capture"
+              allowFullScreen
+            ></iframe>
+          </div>
+        ) : (
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full">
+            <FiVideo size={56} className="mb-3 opacity-40 text-white" />
+            <span className="text-white font-medium text-sm">Zoom Session Link Not Configured</span>
+          </div>
+        );
+
+      case 'pdf':
+        return currentLesson.content ? (
+          <iframe
+            src={currentLesson.content}
+            className="w-full h-full"
+            title="PDF Document"
+          ></iframe>
+        ) : (
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full">
+            <FiFileText size={56} className="mb-3 opacity-40 text-white" />
+            <span className="text-white font-medium text-sm">PDF Document Not Available</span>
+          </div>
+        );
+
+      case 'text':
+      default:
+        // SECURITY FIX: Use DOMPurify to prevent XSS attacks
+        const cleanHTML = DOMPurify.sanitize(currentLesson.content || '<p>Reading materials go here...</p>');
+        return (
+          <div className="bg-gray-50 dark:bg-gray-900 w-full h-full flex flex-col items-center p-6 lg:p-12 text-gray-800 dark:text-gray-200 overflow-y-auto absolute inset-0">
+            <FiFileText size={56} className="text-primary-300 dark:text-primary-800 mb-6 flex-shrink-0" />
+            <div
+              className="max-w-3xl w-full text-left prose dark:prose-invert text-sm pb-10"
+              dangerouslySetInnerHTML={{ __html: cleanHTML }}
+            ></div>
+          </div>
+        );
+    }
+  };
 
   // Calculate real progress
   const totalLessons = course.modules.reduce((acc, mod) => acc + (mod.lessons?.length || 0), 0);
@@ -79,8 +174,8 @@ const CoursePlayer = () => {
     }
   };
 
-  const nextLesson = () => {
-    handleLessonComplete(currentLesson._id);
+  const nextLesson = async () => {
+    await handleLessonComplete(currentLesson._id);
     if (activeLessonIndex < currentModule.lessons.length - 1) {
       setActiveLessonIndex(activeLessonIndex + 1);
     } else if (activeModuleIndex < course.modules.length - 1) {
@@ -94,8 +189,27 @@ const CoursePlayer = () => {
       navigate(`/learn/${id}/quiz/${currentModule.quiz._id}`);
     } else {
       toast.success('Course Completed! 🎉');
+
+      try {
+        const fbRes = await axios.get(`/api/feedback/status/${id}`);
+        const fb = fbRes.data?.data;
+        if (fb?.formAvailable && fb?.isUnlocked && !fb?.isSubmitted) {
+          const formRes = await axios.get(`/api/feedback/form/${id}`);
+          setFeedbackData(formRes.data.data);
+          setFeedbackModalOpen(true);
+          return; // Wait for modal completion
+        }
+      } catch (err) {
+        console.error('Feedback check error', err);
+      }
+
       navigate('/dashboard');
     }
+  };
+
+  const handleFeedbackSuccess = () => {
+    setFeedbackModalOpen(false);
+    navigate('/dashboard');
   };
 
   const isFirstLesson = activeModuleIndex === 0 && activeLessonIndex === 0;
@@ -146,15 +260,16 @@ const CoursePlayer = () => {
                     <div
                       key={lesson._id}
                       onClick={() => { setActiveModuleIndex(mIndex); setActiveLessonIndex(lIndex); setSidebarOpen(false); }}
-                      className={`px-5 py-2.5 cursor-pointer flex items-start text-sm transition-all ${
-                        isActive ? 'bg-primary-50 dark:bg-primary-900/30 border-l-3 border-primary-600' : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-3 border-transparent'
-                      }`}
+                      className={`px-5 py-2.5 cursor-pointer flex items-start text-sm transition-all ${isActive ? 'bg-primary-50 dark:bg-primary-900/30 border-l-3 border-primary-600' : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-3 border-transparent'
+                        }`}
                     >
                       <div className="mt-0.5 mr-3">
                         {isCompleted ? (
                           <FiCheckCircle className="text-green-500 flex-shrink-0" size={15} />
-                        ) : lesson.type === 'video' ? (
+                        ) : lesson.type === 'video' || lesson.type === 'external_video' ? (
                           <FiPlayCircle className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
+                        ) : lesson.type === 'zoom' ? (
+                          <FiVideo className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
                         ) : (
                           <FiFileText className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
                         )}
@@ -201,21 +316,7 @@ const CoursePlayer = () => {
 
         {/* Video / Content */}
         <div className="bg-black aspect-video w-full flex items-center justify-center relative overflow-hidden">
-          {isVideo ? (
-            currentLesson.content ? (
-              <video src={currentLesson.content} controls className="w-full h-full object-contain" poster={course.thumbnail} />
-            ) : (
-              <div className="text-gray-500 flex flex-col items-center">
-                <FiPlayCircle size={56} className="mb-3 opacity-40 text-white" />
-                <span className="text-white font-medium text-sm">Video Source Not Available</span>
-              </div>
-            )
-          ) : (
-            <div className="bg-gray-50 dark:bg-gray-900 w-full h-full flex flex-col items-center p-6 lg:p-12 text-gray-800 dark:text-gray-200 overflow-y-auto">
-              <FiFileText size={56} className="text-primary-300 dark:text-primary-800 mb-6" />
-              <div className="max-w-3xl text-left prose dark:prose-invert text-sm" dangerouslySetInnerHTML={{ __html: currentLesson?.content || '<p>Reading materials go here...</p>' }}></div>
-            </div>
-          )}
+          {renderContent()}
         </div>
 
         {/* Lesson Info & Navigation */}
@@ -261,7 +362,11 @@ const CoursePlayer = () => {
                   <FiFileText className="mr-2 text-primary-500" size={14} /> Instructor Notes
                 </h3>
                 <div className="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-400 text-sm">
-                  {currentLesson?.description || "No supplemental notes available for this lesson."}
+                  {currentLesson?.description ? (
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentLesson.description) }} />
+                  ) : (
+                    "No supplemental notes available for this lesson."
+                  )}
                 </div>
               </div>
             </div>
@@ -270,20 +375,39 @@ const CoursePlayer = () => {
               <div className="bg-gray-50 dark:bg-gray-900 p-5 rounded-xl border border-gray-100 dark:border-gray-800">
                 <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center text-sm"><FiDownload className="mr-2 text-accent-500" size={14} /> Resources</h3>
                 <div className="space-y-2">
-                  <div className="p-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg flex items-center justify-between group cursor-pointer hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">Slide_Deck.pdf</span>
-                    <FiDownload className="text-gray-400 group-hover:text-primary-500" size={13} />
-                  </div>
-                  <div className="p-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg flex items-center justify-between group cursor-pointer hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">Source_Code.zip</span>
-                    <FiDownload className="text-gray-400 group-hover:text-primary-500" size={13} />
-                  </div>
+                  {currentLesson?.resources && currentLesson.resources.length > 0 ? (
+                    currentLesson.resources.map((resource, idx) => (
+                      <a
+                        key={idx}
+                        href={resource.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg flex items-center justify-between group cursor-pointer hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
+                      >
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{resource.title}</span>
+                        <FiDownload className="text-gray-400 group-hover:text-primary-500 flex-shrink-0" size={13} />
+                      </a>
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500">No resources attached to this lesson.</p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <FeedbackFormModal
+        isOpen={feedbackModalOpen}
+        onClose={() => {
+          setFeedbackModalOpen(false);
+          navigate('/dashboard');
+        }}
+        formData={feedbackData}
+        liveCourseId={id}
+        onSuccess={handleFeedbackSuccess}
+      />
     </div>
   );
 };

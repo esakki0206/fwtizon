@@ -58,10 +58,19 @@ const courseSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  linkedLiveCourseId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'LiveCourse',
+    default: null
+  },
   isLive: {
     type: Boolean,
     default: false,
   },
+  learningOutcomes: [{
+    type: String,
+    trim: true,
+  }],
   status: {
     type: String,
     enum: ['draft', 'published'],

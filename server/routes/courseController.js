@@ -99,7 +99,7 @@ export const getCourse = async (req, res) => {
         select: 'title order lessons quiz',
         populate: {
           path: 'lessons',
-          select: 'title type duration isPreview order',
+          select: 'title type duration isPreview order description resources',
         },
       });
 
@@ -113,6 +113,41 @@ export const getCourse = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get full course content (Protected)
+// @route   GET /api/courses/:id/content
+// @access  Private (Enrolled users, Instructors, Admins)
+export const getCourseContent = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    const course = await Course.findById(courseId)
+      .populate({
+        path: 'instructor',
+        select: 'name avatar description bio',
+      })
+      .populate({
+        path: 'modules',
+        select: 'title order lessons quiz',
+        populate: {
+          path: 'lessons',
+          // Get all fields including content, zoomEmbedLink, zoomPassword
+        },
+      });
+
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: attachDisplayInstructor(course),
+    });
+  } catch (error) {
+    console.error('getCourseContent error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch course content' });
   }
 };
 

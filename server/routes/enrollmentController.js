@@ -687,7 +687,7 @@ export const updateProgress = async (req, res) => {
       enrollment.progress.completedLessons.push(lessonId);
 
       try {
-        const modules = await Module.find({ course: courseId });
+        const modules = await Module.find({ course: courseObjectId });
         const totalLessons = modules.reduce((total, mod) => total + (mod.lessons?.length || 0), 0);
 
         if (totalLessons > 0) {

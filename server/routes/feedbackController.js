@@ -601,14 +601,18 @@ export const getMyFeedbackForms = async (req, res) => {
 export const getFeedbackForm = async (req, res) => {
   try {
     const { liveCourseId } = req.params;
+    
+    let courseObjectId = liveCourseId;
     if (!isValidObjectId(liveCourseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+      const course = await mongoose.model('Course').findOne({ slug: liveCourseId }).select('_id');
+      if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+      courseObjectId = course._id;
     }
 
     // Verify enrollment
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
+      $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }],
       status: { $in: ['active', 'completed'] },
     });
 
@@ -616,8 +620,8 @@ export const getFeedbackForm = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You are not enrolled in this course' });
     }
 
-    const liveCourse = await LiveCourse.findById(liveCourseId).select('title status startDate endDate');
-    const course = await mongoose.model('Course').findById(liveCourseId).select('title status');
+    const liveCourse = await LiveCourse.findById(courseObjectId).select('title status startDate endDate');
+    const course = await mongoose.model('Course').findById(courseObjectId).select('title status');
     const courseObj = liveCourse || course;
 
     if (!courseObj) {
@@ -625,7 +629,7 @@ export const getFeedbackForm = async (req, res) => {
     }
 
     const form = await FeedbackForm.findOne({
-      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
+      $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }],
       isActive: true
     });
 
@@ -652,7 +656,7 @@ export const getFeedbackForm = async (req, res) => {
     if (existingSubmission) {
       const cert = await Certificate.findOne({ 
         user: req.user.id, 
-        $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }] 
+        $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }] 
       }).select('certificateId');
 
       return res.status(200).json({
@@ -902,14 +906,18 @@ export const submitFeedback = async (req, res) => {
 export const getFeedbackStatus = async (req, res) => {
   try {
     const { liveCourseId } = req.params;
+    
+    let courseObjectId = liveCourseId;
     if (!isValidObjectId(liveCourseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+      const course = await mongoose.model('Course').findOne({ slug: liveCourseId }).select('_id');
+      if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+      courseObjectId = course._id;
     }
 
     // Verify enrollment
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }],
+      $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }],
       status: { $in: ['active', 'completed'] },
     });
 
@@ -920,12 +928,12 @@ export const getFeedbackStatus = async (req, res) => {
       });
     }
 
-    const liveCourse = await LiveCourse.findById(liveCourseId).select('title status endDate');
-    const course = await mongoose.model('Course').findById(liveCourseId).select('title status');
+    const liveCourse = await LiveCourse.findById(courseObjectId).select('title status endDate');
+    const course = await mongoose.model('Course').findById(courseObjectId).select('title status');
     const courseObj = liveCourse || course;
 
     const form = await FeedbackForm.findOne({ 
-      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }], 
+      $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }], 
       isActive: true 
     }).select('_id title unlockDate submissionDeadline isActive course');
 
@@ -940,7 +948,7 @@ export const getFeedbackStatus = async (req, res) => {
     const submission = await FeedbackSubmission.findOne({ feedbackForm: form._id, user: req.user.id }).select('submittedAt');
     const cert = await Certificate.findOne({ 
       user: req.user.id, 
-      $or: [{ liveCourse: liveCourseId }, { course: liveCourseId }] 
+      $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }] 
     }).select('certificateId');
 
     res.status(200).json({

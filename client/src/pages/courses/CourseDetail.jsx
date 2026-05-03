@@ -154,7 +154,7 @@ const CourseDetail = () => {
           email: user.email,
           fullName: user.name || '',
         });
-        
+
         if (verifyRes.data.bypass) {
           toast.success('Enrolled successfully (Admin Access)');
           setIsEnrolled(true);
@@ -313,7 +313,7 @@ const CourseDetail = () => {
   ) || 0;
 
   // instructorName/Photo with display overrides from admin
-  const instructorName  = course.displayInstructorName  || course.instructor?.name  || 'Fwtion Academy';
+  const instructorName = course.displayInstructorName || course.instructor?.name || 'Fwtion Academy';
   const instructorPhoto = course.displayInstructorPhoto || course.instructor?.avatar || '';
 
   return (
@@ -639,10 +639,6 @@ const CourseDetail = () => {
                     {enrolling ? 'Processing…' : `Enroll Now — ₹${appliedCoupon ? appliedCoupon.finalPrice : course.price}`}
                   </Button>
                 )}
-
-                <p className="text-center text-xs font-semibold text-gray-500 dark:text-gray-400 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
-                  <FiCheck className="inline mr-1 text-green-500" size={12} /> 30-Day Money-Back Guarantee
-                </p>
 
                 <div className="space-y-3.5 text-sm text-gray-600 dark:text-gray-400">
                   <h4 className="font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider mb-1">

@@ -3,7 +3,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { AdminTable } from '../../components/admin/AdminTable';
 import { Button } from '../../components/ui/button';
-import { FiPlus, FiTrash2, FiVideo, FiFileText, FiAlertCircle, FiSettings, FiLink } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiVideo, FiFileText, FiAlertCircle, FiSettings, FiLink, FiUsers, FiDownload } from 'react-icons/fi';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import ImageUploader from '../../components/common/ImageUploader';
 
@@ -40,6 +40,11 @@ const CourseManager = () => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [liveCourses, setLiveCourses] = useState([]);
+
+  const [currentCourse, setCurrentCourse] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   useEffect(() => {
     fetchCourses();
@@ -143,6 +148,54 @@ const CourseManager = () => {
       setCourses(prev => prev.filter(c => c._id !== id));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete course');
+    }
+  };
+
+  // ── View Students ───────────────────────────────────────────────────────
+  const handleViewStudents = async (e, course) => {
+    e.stopPropagation();
+    setEditingCourse(course._id);
+    setCurrentCourse(course);
+    setView('students');
+    setStudentsLoading(true);
+    try {
+      const res = await axios.get(`/api/admin/courses/${course._id}/students`);
+      setStudents(res.data.data || []);
+    } catch (err) {
+      toast.error('Failed to load students');
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
+  const handleExportStudents = () => {
+    if (!students || students.length === 0) return;
+    setExportLoading(true);
+    try {
+      const headers = ['Name', 'Email', 'Contact', 'Status', 'Enrolled On'];
+      const rows = students.map(app => [
+        `"${app.user?.name || app.fullName || ''}"`,
+        `"${app.user?.email || app.email || ''}"`,
+        `"${app.user?.mobileNumber || ''}"`,
+        `"${app.status || 'active'}"`,
+        `"${new Date(app.createdAt).toISOString()}"`
+      ]);
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const courseName = currentCourse?.title ? currentCourse.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40) : 'course';
+      link.setAttribute('download', `students_${courseName}_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success('Students exported successfully');
+    } catch (err) {
+      toast.error('Export failed');
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -314,10 +367,8 @@ const CourseManager = () => {
       id: 'actions',
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <a href={`/admin/courses/${row._id}/students`} onClick={e => e.stopPropagation()}>
-              Students
-            </a>
+          <Button variant="outline" size="sm" onClick={(e) => handleViewStudents(e, row)}>
+            Students
           </Button>
           <Button variant="destructive" size="sm" onClick={(e) => handleDelete(e, row._id)}>
             <FiTrash2 className="mr-1" size={12} /> Delete
@@ -820,6 +871,102 @@ const CourseManager = () => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {view === 'students' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Enrolled Students</h2>
+              <p className="text-gray-500 text-sm truncate">
+                {currentCourse?.title || 'Selected course'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              {students.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleExportStudents}
+                  disabled={exportLoading}
+                  className="flex items-center gap-2 font-semibold text-green-700 border-green-300 hover:bg-green-50 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-900/20"
+                >
+                  <FiDownload size={15} />
+                  {exportLoading ? 'Exporting...' : 'Export to Excel'}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => { setView('list'); setCurrentCourse(null); }}>
+                Back to Courses
+              </Button>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              {studentsLoading ? (
+                <div className="p-8 text-center text-gray-500">Loading students...</div>
+              ) : students.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <FiUsers className="mx-auto mb-4 text-gray-300 dark:text-gray-600" size={48} />
+                  <p className="font-medium">No students enrolled yet.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800/50">
+                      <tr>
+                        <th className="px-4 sm:px-6 py-4 font-bold">#</th>
+                        <th className="px-4 sm:px-6 py-4 font-bold">Student</th>
+                        <th className="px-4 sm:px-6 py-4 font-bold">Contact</th>
+                        <th className="px-4 sm:px-6 py-4 font-bold">Progress</th>
+                        <th className="px-4 sm:px-6 py-4 font-bold">Status</th>
+                        <th className="px-4 sm:px-6 py-4 font-bold">Enrolled On</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {students.map((app, index) => (
+                        <tr
+                          key={app._id}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                        >
+                          <td className="px-4 sm:px-6 py-4 text-gray-400 text-xs font-mono">{index + 1}</td>
+                          <td className="px-4 sm:px-6 py-4">
+                            <div className="font-bold text-gray-900 dark:text-white">{app.user?.name || app.fullName || 'Unknown'}</div>
+                            <div className="text-gray-500 text-xs mt-0.5">{app.user?.email || app.email || 'N/A'}</div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4">
+                            <div className="text-gray-900 dark:text-white text-xs font-medium">
+                              {app.user?.mobileNumber || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4">
+                            <div className="text-gray-900 dark:text-white text-xs font-medium">
+                              {app.progress?.percentComplete || 0}%
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${app.status === 'completed'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              }`}>
+                              {app.status || 'active'}
+                            </span>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-gray-500 text-xs">
+                            {new Date(app.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

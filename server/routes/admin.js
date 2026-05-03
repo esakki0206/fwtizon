@@ -2080,6 +2080,29 @@ router.delete('/courses/:id', protect, authorize('admin'), async (req, res) => {
 });
 
 /**
+ * @desc    Get applications/enrollments for a specific normal course
+ * @route   GET /api/admin/courses/:id/students
+ * @access  Private/Admin
+ */
+router.get('/courses/:id/students', protect, authorize('admin'), async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
+    const enrollments = await Enrollment.find({ course: req.params.id })
+      .populate('user', 'name email mobileNumber whatsappNumber gender courseDepartment experienceLevel avatar')
+      .sort('-createdAt')
+      .lean();
+
+    res.status(200).json({ success: true, data: enrollments });
+  } catch (error) {
+    console.error('Admin get course students error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * @desc    Get a single course with full curriculum (modules + lessons) for the admin editor
  * @route   GET /api/admin/courses/:id/full
  * @access  Private/Admin

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/button';
 import DOMPurify from 'dompurify';
-import FeedbackFormModal from '../../components/modals/FeedbackFormModal';
+import FeedbackFormModal from '../../components/common/FeedbackFormModal';
 
 const CoursePlayer = () => {
   const { id } = useParams();

@@ -27,10 +27,20 @@ export const checkEnrollment = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Course ID is required for validation' });
     }
 
+    let courseObjectId = courseId;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(courseId);
+    if (!isObjectId) {
+      const course = await Course.findOne({ slug: courseId }).select('_id');
+      if (!course) {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
+      courseObjectId = course._id;
+    }
+
     // 4. Check enrollment status
     const enrollment = await Enrollment.findOne({
       user: req.user.id,
-      course: courseId,
+      course: courseObjectId,
       status: { $in: ['active', 'completed'] } // Only allow active or completed enrollments
     });
 

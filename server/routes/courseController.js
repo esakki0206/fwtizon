@@ -121,9 +121,11 @@ export const getCourse = async (req, res) => {
 // @access  Private (Enrolled users, Instructors, Admins)
 export const getCourseContent = async (req, res) => {
   try {
-    const courseId = req.params.id;
+    const param = req.params.id;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(param);
+    const filter = isObjectId ? { _id: param } : { slug: param };
 
-    const course = await Course.findById(courseId)
+    const course = await Course.findOne(filter)
       .populate({
         path: 'instructor',
         select: 'name avatar description bio',

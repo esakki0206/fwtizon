@@ -666,11 +666,18 @@ export const updateProgress = async (req, res) => {
     if (!courseId || !lessonId) {
       return res.status(400).json({ success: false, message: 'courseId and lessonId are required' });
     }
-    if (!isValidObjectId(courseId) || !isValidObjectId(lessonId)) {
-      return res.status(400).json({ success: false, message: 'Invalid courseId or lessonId format' });
+    if (!isValidObjectId(lessonId)) {
+      return res.status(400).json({ success: false, message: 'Invalid lessonId format' });
     }
 
-    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId }).populate('course');
+    let courseObjectId = courseId;
+    if (!isValidObjectId(courseId)) {
+      const course = await Course.findOne({ slug: courseId }).select('_id');
+      if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+      courseObjectId = course._id;
+    }
+
+    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseObjectId }).populate('course');
 
     if (!enrollment) {
       return res.status(404).json({ success: false, message: 'Enrollment not found' });

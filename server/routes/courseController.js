@@ -146,6 +146,7 @@ export const getCourseContent = async (req, res) => {
     res.status(200).json({
       success: true,
       data: attachDisplayInstructor(course),
+      progress: req.enrollment ? req.enrollment.progress : null
     });
   } catch (error) {
     console.error('getCourseContent error:', error);

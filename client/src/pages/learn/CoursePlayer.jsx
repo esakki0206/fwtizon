@@ -27,6 +27,9 @@ const CoursePlayer = () => {
         // SECURITY FIX: Use the protected content endpoint
         const res = await axios.get(`/api/courses/${id}/content`);
         setCourse(res.data.data);
+        if (res.data.progress?.completedLessons) {
+          setCompletedLessons(res.data.progress.completedLessons);
+        }
       } catch (err) {
         if (err.response && err.response.status === 403) {
           toast.error('You are not enrolled in this course.');
@@ -90,6 +93,18 @@ const CoursePlayer = () => {
         );
 
       case 'external_video':
+        if (currentLesson.content && currentLesson.content.includes('zoom.us')) {
+          return (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-white p-6">
+              <FiVideo size={64} className="mb-4 text-blue-500" />
+              <h3 className="text-xl font-bold mb-2">Zoom Recording</h3>
+              <p className="text-gray-400 mb-6 text-sm text-center max-w-md">This video is hosted on Zoom and needs to be opened securely in a new tab.</p>
+              <a href={currentLesson.content} target="_blank" rel="noopener noreferrer" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold transition-colors shadow-lg shadow-blue-500/30 flex items-center">
+                 Watch on Zoom <FiChevronRight className="ml-2" />
+              </a>
+            </div>
+          );
+        }
         return currentLesson.content ? (
           <iframe
             src={currentLesson.content}
@@ -106,6 +121,24 @@ const CoursePlayer = () => {
         );
 
       case 'zoom':
+        if (currentLesson.zoomEmbedLink && currentLesson.zoomEmbedLink.includes('zoom.us')) {
+          return (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-white p-6">
+              <FiVideo size={64} className="mb-4 text-blue-500" />
+              <h3 className="text-xl font-bold mb-2">Zoom Session</h3>
+              <p className="text-gray-400 mb-6 text-sm text-center max-w-md">This session is hosted on Zoom and needs to be opened securely in a new tab.</p>
+              {currentLesson.zoomPassword && (
+                <div className="mb-6 bg-gray-800/80 px-4 py-2 rounded-lg border border-gray-700 text-sm flex items-center">
+                  <span className="text-gray-400 mr-2">Passcode:</span> 
+                  <span className="font-mono font-bold text-white tracking-wider select-all cursor-text">{currentLesson.zoomPassword}</span>
+                </div>
+              )}
+              <a href={currentLesson.zoomEmbedLink} target="_blank" rel="noopener noreferrer" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold transition-colors shadow-lg shadow-blue-500/30 flex items-center">
+                 Join on Zoom <FiChevronRight className="ml-2" />
+              </a>
+            </div>
+          );
+        }
         return currentLesson.zoomEmbedLink ? (
           <div className="w-full h-full flex flex-col">
             <div className="bg-gray-900 text-white p-2 text-xs flex justify-between items-center z-10 relative">
@@ -222,15 +255,15 @@ const CoursePlayer = () => {
         {sidebarOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
       </AnimatePresence>
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 lg:static z-50 w-80 lg:w-[330px] bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="p-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 sticky top-0 z-10 flex items-center justify-between">
+      <div className={`fixed inset-y-0 left-0 lg:static z-50 w-[85vw] max-w-[300px] lg:w-[330px] bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shadow-2xl lg:shadow-none`}>
+        <div className="p-4 lg:p-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 sticky top-0 z-10 flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 leading-tight">{course.title}</h2>
             <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden">
@@ -246,10 +279,10 @@ const CoursePlayer = () => {
           </button>
         </div>
 
-        <div className="flex-grow overflow-y-auto">
+        <div className="flex-grow overflow-y-auto pb-4">
           {course.modules.map((mod, mIndex) => (
             <div key={mod._id} className="border-b border-gray-200 dark:border-gray-800/50">
-              <div className="px-5 py-3 bg-gray-100/60 dark:bg-gray-800/40 font-semibold text-gray-700 dark:text-gray-300 text-xs flex items-center justify-between tracking-wide uppercase">
+              <div className="px-4 lg:px-5 py-2.5 bg-gray-100/60 dark:bg-gray-800/40 font-semibold text-gray-700 dark:text-gray-300 text-[11px] flex items-center justify-between tracking-wide uppercase">
                 <span>Part {mIndex + 1}: {mod.title}</span>
               </div>
               <div className="py-1">
@@ -260,25 +293,25 @@ const CoursePlayer = () => {
                     <div
                       key={lesson._id}
                       onClick={() => { setActiveModuleIndex(mIndex); setActiveLessonIndex(lIndex); setSidebarOpen(false); }}
-                      className={`px-5 py-2.5 cursor-pointer flex items-start text-sm transition-all ${isActive ? 'bg-primary-50 dark:bg-primary-900/30 border-l-3 border-primary-600' : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-3 border-transparent'
+                      className={`px-4 lg:px-5 py-2 lg:py-2.5 cursor-pointer flex items-start transition-all ${isActive ? 'bg-primary-50 dark:bg-primary-900/30 border-l-3 border-primary-600' : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-3 border-transparent'
                         }`}
                     >
-                      <div className="mt-0.5 mr-3">
+                      <div className="mt-0.5 mr-2.5">
                         {isCompleted ? (
-                          <FiCheckCircle className="text-green-500 flex-shrink-0" size={15} />
+                          <FiCheckCircle className="text-green-500 flex-shrink-0" size={14} />
                         ) : lesson.type === 'video' || lesson.type === 'external_video' ? (
-                          <FiPlayCircle className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
+                          <FiPlayCircle className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={14} />
                         ) : lesson.type === 'zoom' ? (
-                          <FiVideo className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
+                          <FiVideo className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={14} />
                         ) : (
-                          <FiFileText className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={15} />
+                          <FiFileText className={`${isActive ? 'text-primary-600' : 'text-gray-400'} flex-shrink-0`} size={14} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className={`text-xs ${isActive ? 'text-primary-800 dark:text-primary-200 font-bold' : 'text-gray-600 dark:text-gray-400 font-medium'} line-clamp-2`}>
+                        <span className={`text-[11.5px] lg:text-xs ${isActive ? 'text-primary-800 dark:text-primary-200 font-bold' : 'text-gray-600 dark:text-gray-400 font-medium'} line-clamp-2 leading-tight`}>
                           {lesson.title}
                         </span>
-                        <div className="flex items-center text-[9px] uppercase font-bold text-gray-400 mt-0.5">
+                        <div className="flex items-center text-[8.5px] lg:text-[9px] uppercase font-bold text-gray-400 mt-1">
                           <FiClock className="mr-1" size={9} /> {Math.floor((lesson.duration || 600) / 60)} min
                         </div>
                       </div>
@@ -287,8 +320,8 @@ const CoursePlayer = () => {
                 })}
                 {mod.quiz && (
                   <div
-                    onClick={() => navigate(`/learn/${id}/quiz/${mod.quiz._id}`)}
-                    className="px-5 py-3 cursor-pointer flex items-center text-xs bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 border-l-3 border-yellow-500 transition-colors"
+                    onClick={() => { navigate(`/learn/${id}/quiz/${mod.quiz._id}`); setSidebarOpen(false); }}
+                    className="px-4 lg:px-5 py-2.5 cursor-pointer flex items-center bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 border-l-3 border-yellow-500 transition-colors"
                   >
                     <FiFileText className="text-yellow-600 mr-3 flex-shrink-0" size={14} />
                     <div>
@@ -320,30 +353,30 @@ const CoursePlayer = () => {
         </div>
 
         {/* Lesson Info & Navigation */}
-        <div className="p-5 lg:p-10 max-w-5xl mx-auto w-full">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-5 border-b border-gray-200 dark:border-gray-800 gap-4">
-            <div>
-              <span className="inline-block px-2.5 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-bold text-[10px] rounded-lg uppercase tracking-widest mb-2">
+        <div className="p-4 lg:p-10 max-w-5xl mx-auto w-full pb-28 lg:pb-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 lg:mb-8 pb-4 lg:pb-5 border-b border-gray-200 dark:border-gray-800 gap-4">
+            <div className="w-full lg:w-auto">
+              <span className="inline-block px-2 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-bold text-[9px] lg:text-[10px] rounded-md lg:rounded-lg uppercase tracking-widest mb-1.5 lg:mb-2">
                 Module {activeModuleIndex + 1} &bull; {currentModule?.title}
               </span>
-              <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">{currentLesson?.title || 'Lesson'}</h1>
+              <h1 className="text-xl lg:text-2xl font-extrabold text-gray-900 dark:text-white leading-tight">{currentLesson?.title || 'Lesson'}</h1>
             </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex items-center space-x-2 w-full md:w-auto">
+            {/* Desktop Navigation Buttons */}
+            <div className="hidden lg:flex items-center space-x-2">
               <Button
                 onClick={prevLesson}
                 disabled={isFirstLesson}
                 variant="outline"
                 size="default"
-                className="rounded-xl font-semibold text-xs flex-1 md:flex-initial disabled:opacity-30"
+                className="rounded-xl font-semibold text-xs disabled:opacity-30"
               >
                 <FiChevronLeft className="mr-1" /> Previous
               </Button>
               <Button
                 onClick={nextLesson}
                 size="default"
-                className="rounded-xl font-semibold shadow-md shadow-primary-600/15 text-xs flex-1 md:flex-initial"
+                className="rounded-xl font-semibold shadow-md shadow-primary-600/15 text-xs"
               >
                 Complete & Next <FiChevronRight className="ml-1" />
               </Button>
@@ -396,6 +429,24 @@ const CoursePlayer = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Mobile Fixed Navigation Bottom Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-3 flex gap-3 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
+        <Button 
+          onClick={prevLesson} 
+          disabled={isFirstLesson} 
+          variant="outline" 
+          className="flex-1 rounded-xl font-bold text-xs h-12 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+        >
+           <FiChevronLeft className="mr-1" size={16} /> Prev
+        </Button>
+        <Button 
+          onClick={nextLesson} 
+          className="flex-[2] rounded-xl font-bold shadow-lg shadow-primary-600/20 text-xs h-12"
+        >
+           Complete & Next <FiChevronRight className="ml-1" size={16} />
+        </Button>
       </div>
 
       <FeedbackFormModal

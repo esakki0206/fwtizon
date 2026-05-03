@@ -249,8 +249,8 @@ const Navbar = () => {
             <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Toggle theme">
               {isDarkMode ? <FiSun size={20} /> : <FiMoon size={20} />}
             </button>
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Menu">
-              {isMobileMenuOpen ? <FiX size={22} /> : <FiMenu size={22} />}
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Menu">
+              <FiMenu size={22} />
             </button>
           </div>
         </div>
@@ -283,117 +283,145 @@ const Navbar = () => {
         )}
       </AnimatePresence>
 
-      {/* Mobile Menu Drawer */}
+      {/* Mobile Menu Drawer (Side Slide-in) */}
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 max-h-[70vh] overflow-y-auto"
-          >
-            <div className="px-4 pt-3 pb-6 space-y-1">
-              <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                All Courses
-              </Link>
-              <Link to="/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                Live Courses
-              </Link>
-              {user && (
-                <Link to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                  Dashboard
-                </Link>
-              )}
-
-              {/* Mobile Categories */}
-              <div className="px-4 pt-3 pb-1">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Categories</p>
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-[60] md:hidden backdrop-blur-sm"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-[85vw] max-w-sm bg-white dark:bg-gray-950 z-[70] shadow-2xl flex flex-col md:hidden"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+                <img src={isDarkMode ? fwtLogoWhite : fwtLogoBlack} alt="FWT Logo" className="h-7 w-auto object-contain" />
+                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-900 rounded-full text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
+                  <FiX size={20} />
+                </button>
               </div>
-              {categories.map((cat) => (
-                <Link
-                  key={cat}
-                  to={`/courses?category=${encodeURIComponent(cat)}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="block px-6 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  {cat}
-                </Link>
-              ))}
 
-              <div className="border-t border-gray-100 dark:border-gray-800 my-3"></div>
-
-              {user ? (
-                <>
-                  <div className="px-4 py-3 flex items-center space-x-3">
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto py-5 px-4 space-y-8">
+                {user ? (
+                  <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center space-x-4">
                     <img
                       src={!user.avatar || user.avatar === 'default_avatar.jpg' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4f46e5&color=fff&size=64` : user.avatar}
                       alt={user.name}
-                      className="w-10 h-10 rounded-full border-2 border-gray-200 dark:border-gray-700 object-cover"
+                      className="w-12 h-12 rounded-full border-2 border-white dark:border-gray-700 shadow-sm object-cover"
                     />
-                    <div>
-                      <p className="font-bold text-gray-900 dark:text-white text-sm">{user.name}</p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-900 dark:text-white text-base truncate">{user.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
                     </div>
                   </div>
-                  {user.role === 'admin' ? (
-                    <>
-                      <Link to="/admin/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Dashboard
-                      </Link>
-                      <Link to="/admin/courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Manage Courses
-                      </Link>
-                      <Link to="/admin/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Live Courses
-                      </Link>
-                      <Link to="/admin/payments" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Payments
-                      </Link>
-                      <Link to="/admin/certificates" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Certifications and Receipt
-                      </Link>
-                      <Link to="/admin/users" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Users
-                      </Link>
-                    </>
-                  ) : (
-                    <>
-                      <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Dashboard
-                      </Link>
-                      <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        My Courses
-                      </Link>
-                      <Link to="/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Live Classes
-                      </Link>
-                      <Link to="/dashboard/assignments" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Assignments
-                      </Link>
-                      <Link to="/dashboard/certificates" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Certifications and Receipts
-                      </Link>
-                      <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        Profile
-                      </Link>
-                    </>
-                  )}
-                  <button onClick={handleLogout} className="w-full text-left px-4 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                    Log Out
-                  </button>
-                </>
-              ) : (
-                <div className="mt-3 grid grid-cols-2 gap-3 px-4">
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-700 dark:text-gray-300 font-semibold text-sm">
-                    Log In
+                ) : (
+                  <div className="flex flex-col space-y-3">
+                    <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-3 border-2 border-gray-200 dark:border-gray-800 rounded-xl text-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                      Log In
+                    </Link>
+                    <Link to="/register" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-primary-600/20 transition-all">
+                      Sign Up Free
+                    </Link>
+                  </div>
+                )}
+
+                {/* Primary Navigation */}
+                <div className="space-y-1">
+                  <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <FiBookOpen className="mr-3 opacity-70" size={18} /> All Courses
                   </Link>
-                  <Link to="/register" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm">
-                    Sign Up
+                  <Link to="/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <svg className="w-[18px] h-[18px] mr-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg> Live Courses
                   </Link>
                 </div>
+
+                {/* Dashboard / User Links */}
+                {user && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-2">Your Dashboard</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                        <FiGrid className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Overview</span>
+                      </Link>
+                      
+                      {user.role === 'admin' ? (
+                        <>
+                          <Link to="/admin/courses" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <FiBookOpen className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Manage</span>
+                          </Link>
+                          <Link to="/admin/users" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <FiUser className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Users</span>
+                          </Link>
+                          <Link to="/admin/payments" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <svg className="w-6 h-6 text-gray-400 group-hover:text-primary-500 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" /><path d="M2 10h20M7 15h.01" /></svg>
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Payments</span>
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <FiBookOpen className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">My Courses</span>
+                          </Link>
+                          <Link to="/dashboard/certificates" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <FiAward className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Certificates</span>
+                          </Link>
+                          <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                            <FiUser className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Profile</span>
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Categories */}
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-2">Categories</p>
+                  <div className="flex flex-wrap gap-2 px-1">
+                    {categories.map((cat) => (
+                      <Link
+                        key={cat}
+                        to={`/courses?category=${encodeURIComponent(cat)}`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="px-4 py-2 bg-gray-50 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-700 rounded-full text-[13px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-800 transition-all"
+                      >
+                        {cat}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Footer (Logout) */}
+              {user && (
+                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20 mt-auto">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center justify-center py-3.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <FiLogOut className="mr-2" size={18} /> Log Out
+                  </button>
+                </div>
               )}
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </nav>

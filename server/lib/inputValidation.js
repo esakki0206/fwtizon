@@ -130,7 +130,7 @@ export const normalizeAlign = (align) => {
 export const isValidField = (field) => {
   const validFields = [
     'studentName', 'courseName', 'date', 'certificateId',
-    'serialNumber', 'instructorName', 'customText',
+    'serialNumber', 'instructorName', 'customText', 'wipe',
   ];
   return validFields.includes(field);
 };
@@ -143,8 +143,11 @@ export const isValidField = (field) => {
  */
 export const isValidDateFormat = (format) => {
   const validFormats = [
-    'DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD',
-    'DD MMM YYYY', 'MMMM DD, YYYY',
+    'DD/MM/YYYY', 'DD-MM-YYYY', 'MM/DD/YYYY',
+    'YYYY/MM/DD', 'YYYY-MM-DD',
+    'DD MMM YYYY', 'DD MMMM YYYY',
+    'DD/MMM/YY', 'DD/MMMM/YY',
+    'MMMM DD, YYYY',
   ];
   return validFormats.includes(format);
 };
@@ -173,7 +176,8 @@ export const sanitizeOverlay = (overlay) => {
   overlay.x = Math.max(0, Math.min(100, Number(overlay.x) || 50));
   overlay.y = Math.max(0, Math.min(100, Number(overlay.y) || 50));
   overlay.fontSize = Math.max(6, Math.min(120, Number(overlay.fontSize) || 24));
-  overlay.maxWidth = Math.max(5, Math.min(100, Number(overlay.maxWidth) || 60));
+  overlay.maxWidth = Math.max(overlay.field === 'wipe' ? 0.1 : 5, Math.min(100, Number(overlay.maxWidth) || 60));
+  overlay.height = Math.max(0.1, Math.min(100, Number(overlay.height) || 5));
   overlay.rotation = Math.max(0, Math.min(360, Number(overlay.rotation) || 0));
   overlay.opacity = Math.max(0, Math.min(1, Number(overlay.opacity) ?? 1));
   overlay.letterSpacing = Number(overlay.letterSpacing) || 0;
@@ -277,8 +281,12 @@ export const validateOverlay = (overlay) => {
     errors.push(`Invalid fontSize: ${overlay.fontSize} (must be 6-120)`);
   }
 
-  if (overlay.maxWidth && (typeof overlay.maxWidth !== 'number' || overlay.maxWidth < 5 || overlay.maxWidth > 100)) {
-    errors.push(`Invalid maxWidth: ${overlay.maxWidth} (must be 5-100)`);
+  if (overlay.maxWidth && (typeof overlay.maxWidth !== 'number' || overlay.maxWidth < 0.1 || overlay.maxWidth > 100)) {
+    errors.push(`Invalid maxWidth: ${overlay.maxWidth} (must be 0.1-100)`);
+  }
+
+  if (overlay.height && (typeof overlay.height !== 'number' || overlay.height < 0.1 || overlay.height > 100)) {
+    errors.push(`Invalid height: ${overlay.height} (must be 0.1-100)`);
   }
 
   // Validate enum fields

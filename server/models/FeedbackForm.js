@@ -74,6 +74,11 @@ const feedbackFormSchema = new mongoose.Schema({
       message: 'At least one certificate type is required',
     },
   },
+  certificateTemplate: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'CertificateTemplate',
+    default: null,
+  },
   createdBy: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',

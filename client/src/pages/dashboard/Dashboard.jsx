@@ -81,7 +81,9 @@ const Dashboard = () => {
   const handleDownloadCertificate = async (certificate) => {
     const toastId = toast.loading('Preparing download…');
     try {
-      const url = `${BACKEND_BASE}${certificate.downloadUrl}`;
+      const certificateUrl = certificate.viewUrl || certificate.downloadUrl;
+      const separator = certificateUrl.includes('?') ? '&' : '?';
+      const url = `${BACKEND_BASE}${certificateUrl}${separator}download=${Date.now()}`;
       const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const blobUrl = URL.createObjectURL(blob);
@@ -299,52 +301,9 @@ const Dashboard = () => {
           </motion.div>
         </div>
 
-        {/* Enrolled Courses Grid */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
-              <FiBookOpen className="mr-2 text-primary-500" size={20} /> My Courses
-            </h2>
-            <Link to="/courses" className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline flex items-center">
-              Browse More <FiCompass className="ml-1" size={12} />
-            </Link>
-          </div>
-
-          {courseEnrollments.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {courseEnrollments.map((en, index) => (
-                <CourseCard 
-                  key={en._id} 
-                  enrollment={en} 
-                  index={index} 
-                  feedbackStatus={feedbackStatuses[en.course?._id]}
-                  onFeedbackClick={() => openFeedbackModal(en.course?._id)}
-                  onDownloadClick={handleDownloadCertificate}
-                />
-              ))}
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl p-12 text-center border border-gray-100 dark:border-gray-800 shadow-sm"
-            >
-              <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-gray-700">
-                <FiCompass size={28} className="text-primary-300 dark:text-primary-700" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Your Journey Begins Here</h3>
-              <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm leading-relaxed">
-                Discover world-class courses and start building the skills that top companies demand.
-              </p>
-              <Button asChild size="lg" className="rounded-xl px-8 shadow-md shadow-primary-500/20 font-bold">
-                <Link to="/courses">Explore Courses</Link>
-              </Button>
-            </motion.div>
-          )}
-        </div>
-
         {/* Live Masterclasses Section */}
         {liveEnrollments.length > 0 && (
-          <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-gray-800">
+          <div className="space-y-4">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
               <FiVideo className="mr-2 text-accent-500" size={20} /> My Live Masterclasses
             </h2>
@@ -413,6 +372,49 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* Enrolled Courses Grid */}
+        <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
+              <FiBookOpen className="mr-2 text-primary-500" size={20} /> My Courses
+            </h2>
+            <Link to="/courses" className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline flex items-center">
+              Browse More <FiCompass className="ml-1" size={12} />
+            </Link>
+          </div>
+
+          {courseEnrollments.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {courseEnrollments.map((en, index) => (
+                <CourseCard 
+                  key={en._id} 
+                  enrollment={en} 
+                  index={index} 
+                  feedbackStatus={feedbackStatuses[en.course?._id]}
+                  onFeedbackClick={() => openFeedbackModal(en.course?._id)}
+                  onDownloadClick={handleDownloadCertificate}
+                />
+              ))}
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="bg-white dark:bg-gray-900 rounded-2xl p-12 text-center border border-gray-100 dark:border-gray-800 shadow-sm"
+            >
+              <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-gray-700">
+                <FiCompass size={28} className="text-primary-300 dark:text-primary-700" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Your Journey Begins Here</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm leading-relaxed">
+                Discover world-class courses and start building the skills that top companies demand.
+              </p>
+              <Button asChild size="lg" className="rounded-xl px-8 shadow-md shadow-primary-500/20 font-bold">
+                <Link to="/courses">Explore Courses</Link>
+              </Button>
+            </motion.div>
+          )}
+        </div>
 
         {/* Feedback Modal */}
         <FeedbackFormModal

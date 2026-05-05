@@ -64,6 +64,10 @@ const certificateSchema = new mongoose.Schema({
     type: String,
     default: 'Legacy Template',
   },
+  templateRenderedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 certificateSchema.index({ user: 1, course: 1 }, { unique: true, sparse: true });

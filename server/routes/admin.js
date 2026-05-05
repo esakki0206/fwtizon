@@ -48,6 +48,31 @@ const router = express.Router();
 // ──────────────────────────────────────────────
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
+const validateActiveCertificateTemplate = async (templateId) => {
+  if (!templateId) return null;
+
+  if (!isValidObjectId(templateId)) {
+    const error = new Error('Invalid certificate template ID');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const template = await CertificateTemplate.findById(templateId).select('_id isActive');
+  if (!template) {
+    const error = new Error('Certificate template not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!template.isActive) {
+    const error = new Error('Selected certificate template is inactive');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return template._id;
+};
+
 const escapeRegex = (str = '') => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const csvEscape = (value) => {
@@ -1270,6 +1295,7 @@ router.post('/generate-cohort-certificate', protect, authorize('admin'), async (
 
     const validCertTypes = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
     const selectedCertType = validCertTypes.includes(certificateType) ? certificateType : 'Completion Certificate';
+    const selectedTemplateId = await validateActiveCertificateTemplate(templateId);
 
     const enrollment = await Enrollment.findOne({ user: userId, liveCourse: cohortId }).populate('user liveCourse');
     if (!enrollment) return res.status(404).json({ success: false, message: 'Valid cohort enrollment not found' });
@@ -1286,7 +1312,8 @@ router.post('/generate-cohort-certificate', protect, authorize('admin'), async (
       courseId: cohortId,
       enrollmentId: enrollment._id,
       completionDate: enrollment.liveCourse.endDate || new Date(),
-      templateId,
+      templateId: selectedTemplateId,
+      certificateType: selectedCertType,
     });
 
     cert.type = 'COHORT';
@@ -1295,7 +1322,7 @@ router.post('/generate-cohort-certificate', protect, authorize('admin'), async (
 
     res.status(201).json({ success: true, data: cert });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message });
   }
 });
 
@@ -1330,6 +1357,7 @@ router.post('/generate-certificate', protect, authorize('admin'), async (req, re
 
     const validCertTypes = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
     const selectedCertType = validCertTypes.includes(certificateType) ? certificateType : 'Completion Certificate';
+    const selectedTemplateId = await validateActiveCertificateTemplate(templateId);
 
     const enrollment = await Enrollment.findOne({ user: userId, course: courseId }).populate('user course');
     if (!enrollment) return res.status(404).json({ success: false, message: 'Valid enrollment not found' });
@@ -1349,7 +1377,8 @@ router.post('/generate-certificate', protect, authorize('admin'), async (req, re
       courseId,
       enrollmentId: enrollment._id,
       completionDate: enrollment.completedAt || new Date(),
-      templateId,
+      templateId: selectedTemplateId,
+      certificateType: selectedCertType,
     });
 
     cert.certificateType = selectedCertType;
@@ -1365,7 +1394,7 @@ router.post('/generate-certificate', protect, authorize('admin'), async (req, re
 
     res.status(201).json({ success: true, data: cert });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message });
   }
 });
 

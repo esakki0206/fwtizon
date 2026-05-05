@@ -31,11 +31,16 @@ const FONT_OPTIONS = [
 ];
 
 const DATE_FORMATS = [
-  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
-  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
-  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
-  { value: 'DD MMM YYYY', label: 'DD MMM YYYY' },
-  { value: 'MMMM DD, YYYY', label: 'MMMM DD, YYYY' },
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY - 08/05/2026' },
+  { value: 'DD-MM-YYYY', label: 'DD-MM-YYYY - 08-05-2026' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY - 05/08/2026' },
+  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD - 2026/05/08' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD - 2026-05-08' },
+  { value: 'DD MMM YYYY', label: 'DD MMM YYYY - 08 May 2026' },
+  { value: 'DD MMMM YYYY', label: 'DD Month YYYY - 08 May 2026' },
+  { value: 'DD/MMM/YY', label: 'DD/Mon/YY - 08/May/26' },
+  { value: 'DD/MMMM/YY', label: 'DD/Month/YY - 08/May/26' },
+  { value: 'MMMM DD, YYYY', label: 'Month DD, YYYY - May 08, 2026' },
 ];
 
 const newOverlay = () => ({
@@ -697,7 +702,20 @@ const CertificateTemplate = () => {
     }
   };
 
-  const handleOverlaySaved = () => {
+  const handleEditTemplate = async (template) => {
+    try {
+      const res = await axios.get(`/api/cert-templates/${template._id}`);
+      setEditingTemplate(res.data.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load template editor');
+    }
+  };
+
+  const handleOverlaySaved = (savedTemplate) => {
+    if (savedTemplate?._id) {
+      setTemplates(prev => prev.map(t => t._id === savedTemplate._id ? savedTemplate : t));
+      setEditingTemplate(savedTemplate);
+    }
     fetchTemplates();
   };
 
@@ -763,7 +781,7 @@ const CertificateTemplate = () => {
               onSetDefault={handleSetDefault}
               onToggleActive={handleToggleActive}
               onDelete={handleDelete}
-              onEditOverlays={setEditingTemplate}
+              onEditOverlays={handleEditTemplate}
             />
           ))}
         </div>

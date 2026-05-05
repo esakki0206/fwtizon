@@ -28,21 +28,60 @@ const FONT_OPTIONS = [
 ];
 
 const DATE_FORMATS = [
-  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
-  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
-  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
-  { value: 'DD MMM YYYY', label: 'DD MMM YYYY' },
-  { value: 'MMMM DD, YYYY', label: 'MMMM DD, YYYY' },
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', example: '08/05/2026' },
+  { value: 'DD-MM-YYYY', label: 'DD-MM-YYYY', example: '08-05-2026' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', example: '05/08/2026' },
+  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD', example: '2026/05/08' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD', example: '2026-05-08' },
+  { value: 'DD MMM YYYY', label: 'DD MMM YYYY', example: '08 May 2026' },
+  { value: 'DD MMMM YYYY', label: 'DD Month YYYY', example: '08 May 2026' },
+  { value: 'DD/MMM/YY', label: 'DD/Mon/YY', example: '08/May/26' },
+  { value: 'DD/MMMM/YY', label: 'DD/Month/YY', example: '08/May/26' },
+  { value: 'MMMM DD, YYYY', label: 'Month DD, YYYY', example: 'May 08, 2026' },
 ];
 
 // Mock data for preview
 const MOCK_DATA = {
   studentName: 'John Doe',
   courseName: 'Advanced Certificate in AI Engineering',
-  date: '15 May 2026',
   certificateId: 'FWT-IZON-2026-0001',
   serialNumber: '0001',
   instructorName: 'Dr. Jane Smith',
+};
+
+const PREVIEW_DATE = new Date('2026-05-08T00:00:00');
+
+const MIN_CANVAS_FONT_SIZE = 4;
+
+const getOverlayBoxX = (anchorX, width, align = 'left') => {
+  if (align === 'center') return anchorX - width / 2;
+  if (align === 'right') return anchorX - width;
+  return anchorX;
+};
+
+const formatPreviewDate = (date, format = 'DD/MM/YYYY') => {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear());
+  const yearShort = year.slice(-2);
+  const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const longMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const shortMonthName = shortMonthNames[d.getMonth()];
+  const longMonthName = longMonthNames[d.getMonth()];
+
+  switch (format) {
+    case 'DD-MM-YYYY': return `${day}-${month}-${year}`;
+    case 'MM/DD/YYYY': return `${month}/${day}/${year}`;
+    case 'YYYY/MM/DD': return `${year}/${month}/${day}`;
+    case 'YYYY-MM-DD': return `${year}-${month}-${day}`;
+    case 'DD MMM YYYY': return `${day} ${shortMonthName} ${year}`;
+    case 'DD MMMM YYYY': return `${day} ${longMonthName} ${year}`;
+    case 'DD/MMM/YY': return `${day}/${shortMonthName}/${yearShort}`;
+    case 'DD/MMMM/YY': return `${day}/${longMonthName}/${yearShort}`;
+    case 'MMMM DD, YYYY': return `${longMonthName} ${day}, ${year}`;
+    default: return `${day}/${month}/${year}`;
+  }
 };
 
 /**
@@ -124,7 +163,7 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
 
       const x = (overlay.x / 100) * renderW;
       const y = (overlay.y / 100) * renderH;
-      const fontSize = overlay.fontSize * (scale);
+      let fontSize = overlay.fontSize * scale;
       const maxWidth = (overlay.maxWidth / 100) * renderW;
       const height = (overlay.height / 100) * renderH;
 
@@ -154,15 +193,18 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
       }
 
       // Get mock text
-      const textValue = MOCK_DATA[overlay.field] || overlay.customText || overlay.field;
+      const textValue = overlay.field === 'date'
+        ? formatPreviewDate(PREVIEW_DATE, overlay.dateFormat)
+        : MOCK_DATA[overlay.field] || overlay.customText || overlay.field;
       const text = overlay.uppercase ? String(textValue).toUpperCase() : String(textValue);
 
       // Draw overlay box (visual indicator)
       isSelected = selected?.id === overlay.id;
+      const boxX = getOverlayBoxX(x, maxWidth, overlay.align || 'left');
       ctx.strokeStyle = isSelected ? '#3b82f6' : 'rgba(150, 150, 150, 0.5)';
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.setLineDash(isSelected ? [5, 5] : []);
-      ctx.strokeRect(x - maxWidth / 2, y - fontSize / 2, maxWidth, fontSize * 2);
+      ctx.strokeRect(boxX, y - height / 2, maxWidth, height);
       ctx.setLineDash([]);
 
       // Draw text
@@ -178,10 +220,18 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
         ctx.translate(-x, -y);
       }
 
-      const lines = wrapTextCanvas(ctx, text, maxWidth);
-      const lineHeight = fontSize * (overlay.lineHeight || 1.2);
+      let lines = wrapTextCanvas(ctx, text, maxWidth);
+      let lineHeight = fontSize * (overlay.lineHeight || 1.2);
+      while (fontSize > MIN_CANVAS_FONT_SIZE && lines.length * lineHeight > height) {
+        fontSize -= 0.5;
+        ctx.font = `${overlay.fontWeight === 'bold' ? 'bold' : 'normal'} ${fontSize}px ${overlay.fontFamily || 'Arial'}`;
+        lines = wrapTextCanvas(ctx, text, maxWidth);
+        lineHeight = fontSize * (overlay.lineHeight || 1.2);
+      }
+      const textBlockHeight = lines.length * lineHeight;
+      const firstBaselineY = y - textBlockHeight / 2 + fontSize * 0.8;
       lines.forEach((line, idx) => {
-        ctx.fillText(line, x, y + idx * lineHeight);
+        ctx.fillText(line, x, firstBaselineY + idx * lineHeight);
       });
 
       ctx.restore();
@@ -218,6 +268,16 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
     if (selected?.id === id) {
       setSelected(prev => ({ ...prev, ...updates }));
     }
+  };
+
+  const updateOverlayField = (id, field) => {
+    const updates = { field };
+    if (field === 'date') updates.dateFormat = selected?.dateFormat || 'DD/MM/YYYY';
+    if (field === 'wipe') {
+      updates.color = '#ffffff';
+      updates.maxWidth = Math.max(selected?.maxWidth || 20, 20);
+    }
+    updateOverlay(id, updates);
   };
 
   const addOverlay = (forcedField = null) => {
@@ -315,12 +375,16 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
       const xPt = (o.x / 100) * renderW;
       const yPt = (o.y / 100) * renderH;
       const wPt = (o.maxWidth / 100) * renderW;
-      const hPt = o.field === 'wipe' ? (o.height / 100) * renderH : (o.fontSize * scale);
+      const hPt = (o.height / 100) * renderH;
       
       const mouseXPt = (x / 100) * renderW;
       const mouseYPt = (y / 100) * renderH;
+      const boxX = o.field === 'wipe'
+        ? xPt - wPt / 2
+        : getOverlayBoxX(xPt, wPt, o.align || 'left');
       
-      return Math.abs(xPt - mouseXPt) < wPt / 2 + 5 && 
+      return mouseXPt >= boxX - 5 &&
+             mouseXPt <= boxX + wPt + 5 &&
              Math.abs(yPt - mouseYPt) < hPt / 2 + 5;
     });
 
@@ -357,19 +421,21 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.patch(`/api/cert-templates/${template._id}/overlays`, {
+      const res = await axios.put(`/api/cert-templates/${template._id}`, {
         overlays,
+        metadata: { editorZoom: zoom, showGrid, gridSize },
       });
+      const savedTemplate = res.data.data;
 
-      // Also update metadata if changed
-      if (template.metadata?.editorZoom !== zoom || template.metadata?.showGrid !== showGrid || template.metadata?.gridSize !== gridSize) {
-        await axios.put(`/api/cert-templates/${template._id}`, {
-          metadata: { editorZoom: zoom, showGrid, gridSize },
-        });
+      if (Array.isArray(savedTemplate?.overlays)) {
+        setOverlays(savedTemplate.overlays.map(o => ({ ...o })));
+        if (selected?.id) {
+          setSelected(savedTemplate.overlays.find(o => o.id === selected.id) || null);
+        }
       }
 
       toast.success('Template saved successfully!');
-      onSaved?.();
+      onSaved?.(savedTemplate);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save template');
     } finally {
@@ -531,7 +597,7 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
                     <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 block">Field</label>
                     <select
                       value={selected.field}
-                      onChange={e => updateOverlay(selected.id, { field: e.target.value })}
+                      onChange={e => updateOverlayField(selected.id, e.target.value)}
                       className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       {FIELD_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -548,6 +614,24 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
                         rows={2}
                         className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
+                    </div>
+                  )}
+
+                  {selected.field === 'date' && (
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 block">Date Format</label>
+                      <select
+                        value={selected.dateFormat || 'DD/MM/YYYY'}
+                        onChange={e => updateOverlay(selected.id, { dateFormat: e.target.value })}
+                        className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        {DATE_FORMATS.map(f => (
+                          <option key={f.value} value={f.value}>{f.label} - {f.example}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                        Preview: {formatPreviewDate(PREVIEW_DATE, selected.dateFormat || 'DD/MM/YYYY')}
+                      </p>
                     </div>
                   )}
 
@@ -605,22 +689,20 @@ const AdvancedCertificateEditor = ({ template, onSaved, onClose }) => {
                     </div>
                   </div>
 
-                  {selected.field === 'wipe' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 block">Height (%)</label>
-                        <input
-                          type="number"
-                          min="0.1"
-                          max="100"
-                          step="0.1"
-                          value={selected.height || 5}
-                          onChange={e => updateOverlay(selected.id, { height: parseFloat(e.target.value) || 5 })}
-                          className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2"
-                        />
-                      </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 block">Height (%)</label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="100"
+                        step="0.1"
+                        value={selected.height || 5}
+                        onChange={e => updateOverlay(selected.id, { height: parseFloat(e.target.value) || 5 })}
+                        className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2"
+                      />
                     </div>
-                  )}
+                  </div>
 
                   {selected.field !== 'wipe' && (
                     <div>

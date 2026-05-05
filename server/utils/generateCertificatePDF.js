@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import https from 'https';
 import http from 'http';
 import { wrapText, normalizeOverlay, validateOverlay } from '../lib/overlayRenderer.js';
+import { cloudinary } from '../config/cloudinary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,14 +46,23 @@ function formatDate(date, format = 'DD/MM/YYYY') {
   const d = new Date(date);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const year = String(d.getFullYear());
+  const yearShort = year.slice(-2);
+  const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const longMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const shortMonthName = shortMonthNames[d.getMonth()];
+  const longMonthName = longMonthNames[d.getMonth()];
 
   switch (format) {
+    case 'DD-MM-YYYY': return `${day}-${month}-${year}`;
     case 'MM/DD/YYYY': return `${month}/${day}/${year}`;
+    case 'YYYY/MM/DD': return `${year}/${month}/${day}`;
     case 'YYYY-MM-DD': return `${year}-${month}-${day}`;
-    case 'DD MMM YYYY': return `${day} ${monthNames[d.getMonth()]} ${year}`;
-    case 'MMMM DD, YYYY': return `${monthNames[d.getMonth()]} ${day}, ${year}`;
+    case 'DD MMM YYYY': return `${day} ${shortMonthName} ${year}`;
+    case 'DD MMMM YYYY': return `${day} ${longMonthName} ${year}`;
+    case 'DD/MMM/YY': return `${day}/${shortMonthName}/${yearShort}`;
+    case 'DD/MMMM/YY': return `${day}/${longMonthName}/${yearShort}`;
+    case 'MMMM DD, YYYY': return `${longMonthName} ${day}, ${year}`;
     default: return `${day}/${month}/${year}`;
   }
 }
@@ -73,7 +83,68 @@ function fetchRemoteBuffer(url) {
   });
 }
 
+function isPdfBuffer(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.slice(0, 4).toString('utf8') === '%PDF';
+}
+
+function buildCloudinaryPdfPageUrl(template) {
+  const publicId = String(template?.publicId || '').replace(/\.pdf$/i, '');
+  if (publicId) {
+    return cloudinary.url(publicId, {
+      secure: true,
+      resource_type: 'image',
+      page: 1,
+      format: 'png',
+    });
+  }
+
+  const fileUrl = String(template?.fileUrl || '');
+  if (!fileUrl || !/\/upload\//.test(fileUrl)) return '';
+
+  return fileUrl
+    .replace('/upload/', '/upload/pg_1,f_png/')
+    .replace(/\.pdf($|\?)/i, '.png$1');
+}
+
+async function fetchTemplateImageBuffer(template) {
+  if (!template?.fileUrl) {
+    throw new Error('Certificate template file URL is missing');
+  }
+
+  const usePdfPageImage = template.fileType === 'pdf' || /\.pdf($|\?)/i.test(template.fileUrl);
+  if (usePdfPageImage) {
+    const pageUrl = buildCloudinaryPdfPageUrl(template);
+    if (!pageUrl) {
+      throw new Error('PDF certificate template cannot be rendered because its Cloudinary public ID is missing');
+    }
+    return fetchRemoteBuffer(pageUrl);
+  }
+
+  const buffer = await fetchRemoteBuffer(template.fileUrl);
+  if (isPdfBuffer(buffer)) {
+    const pageUrl = buildCloudinaryPdfPageUrl(template);
+    if (!pageUrl) {
+      throw new Error('PDF certificate template cannot be rendered because its Cloudinary public ID is missing');
+    }
+    return fetchRemoteBuffer(pageUrl);
+  }
+
+  return buffer;
+}
+
 function pctToPt(pct, totalPt) { return (pct / 100) * totalPt; }
+
+function getTemplateFontScale(template, pageWidthPt) {
+  const templateWidth = Number(template?.width);
+  if (!templateWidth || templateWidth <= 0) return 1;
+  return pageWidthPt / templateWidth;
+}
+
+function getTextBoxX(anchorX, boxWidth, align = 'left') {
+  if (align === 'center') return anchorX - boxWidth / 2;
+  if (align === 'right') return anchorX - boxWidth;
+  return anchorX;
+}
 
 function fitFontSize(doc, text, maxWidthPt, maxSize, minSize = 6) {
   let size = maxSize;
@@ -83,6 +154,31 @@ function fitFontSize(doc, text, maxWidthPt, maxSize, minSize = 6) {
     size -= 0.5;
   }
   return size;
+}
+
+function fitTextToBox(doc, text, maxWidthPt, maxHeightPt, maxSize, lineHeight, minSize = 6) {
+  let size = maxSize;
+  let lines = [];
+  let lineSpacing = size * lineHeight;
+
+  while (size > minSize) {
+    doc.fontSize(size);
+    lines = wrapText(text, size, maxWidthPt, doc);
+    lineSpacing = size * lineHeight;
+    const textHeight = lines.length * lineSpacing;
+
+    if (textHeight <= maxHeightPt && lines.every(line => doc.widthOfString(line) <= maxWidthPt)) {
+      break;
+    }
+
+    size -= 0.5;
+  }
+
+  doc.fontSize(size);
+  lines = wrapText(text, size, maxWidthPt, doc);
+  lineSpacing = size * lineHeight;
+
+  return { fontSize: size, lines, lineSpacing, textHeight: lines.length * lineSpacing };
 }
 
 /**
@@ -165,6 +261,7 @@ function legacyGenerate(doc, data) {
 async function templateGenerate(doc, data, template, templateImageBuffer) {
   const PAGE_W = doc.page.width;
   const PAGE_H = doc.page.height;
+  const FONT_SCALE = getTemplateFontScale(template, PAGE_W);
 
   // Draw template background
   doc.image(templateImageBuffer, 0, 0, { width: PAGE_W, height: PAGE_H });
@@ -186,6 +283,7 @@ async function templateGenerate(doc, data, template, templateImageBuffer) {
     const xPt = pctToPt(overlay.x, PAGE_W);
     const yPt = pctToPt(overlay.y, PAGE_H);
     const maxWidPt = pctToPt(overlay.maxWidth || 60, PAGE_W);
+    const boxHeightPt = pctToPt(overlay.height || 5, PAGE_H);
 
     // Resolve text value
     let text = '';
@@ -229,7 +327,11 @@ async function templateGenerate(doc, data, template, templateImageBuffer) {
     try { doc.font(requestedFont); }
     catch { doc.font('Helvetica-Bold'); }
 
-    const fz = fitFontSize(doc, text, maxWidPt, overlay.fontSize || 24);
+    const scaledMaxFontSize = Math.max(1, (overlay.fontSize || 24) * FONT_SCALE);
+    const minFontSize = Math.max(1, 6 * FONT_SCALE);
+    const baseLineHeight = overlay.lineHeight || 1.2;
+    const fitted = fitTextToBox(doc, text, maxWidPt, boxHeightPt, scaledMaxFontSize, baseLineHeight, minFontSize);
+    const fz = fitted.fontSize;
 
     // Apply new styling properties (NEW)
     doc.fontSize(fz)
@@ -241,9 +343,6 @@ async function templateGenerate(doc, data, template, templateImageBuffer) {
       doc.opacity(overlay.opacity);
     }
 
-    // Wrap text using shared utility
-    const lines = wrapText(text, fz, maxWidPt, doc);
-
     // Apply rotation if needed (NEW)
     if (overlay.rotation && overlay.rotation !== 0) {
       doc.save();
@@ -252,20 +351,14 @@ async function templateGenerate(doc, data, template, templateImageBuffer) {
       doc.translate(-xPt, -yPt);
     }
 
-    // Apply letter spacing if available (NEW, pdfkit native support)
-    const baseLineHeight = overlay.lineHeight || 1.2;
-    const lineSpacing = fz * baseLineHeight;
-
-    // Calculate alignment offset
-    let drawX = xPt;
-    const textW = doc.widthOfString(text);
-    if (overlay.align === 'center') drawX = xPt - textW / 2;
-    else if (overlay.align === 'right') drawX = xPt - textW;
+    const align = overlay.align || 'left';
+    const drawX = getTextBoxX(xPt, maxWidPt, align);
+    const drawY = yPt - boxHeightPt / 2 + Math.max(0, (boxHeightPt - fitted.textHeight) / 2);
 
     // Draw lines with line-height spacing
-    lines.forEach((line, idx) => {
-      const yOffset = yPt + (idx * lineSpacing);
-      doc.text(line, drawX, yOffset, { width: maxWidPt, align: overlay.align || 'left', lineBreak: false });
+    fitted.lines.forEach((line, idx) => {
+      const yOffset = drawY + (idx * fitted.lineSpacing);
+      doc.text(line, drawX, yOffset, { width: maxWidPt, align, lineBreak: false });
     });
 
     if (overlay.rotation && overlay.rotation !== 0) {
@@ -312,15 +405,7 @@ export const generateCertificatePDF = async (data, template = null) => {
 
   if (template && template.fileUrl) {
     // Template-driven path
-    let templateImageBuffer;
-    try {
-      templateImageBuffer = await fetchRemoteBuffer(template.fileUrl);
-    } catch (fetchErr) {
-      console.error('[generateCertificatePDF] Failed to fetch template image, falling back to legacy:', fetchErr.message);
-      legacyGenerate(doc, data);
-      doc.end();
-      return pdfPromise;
-    }
+    const templateImageBuffer = await fetchTemplateImageBuffer(template);
     await templateGenerate(doc, data, template, templateImageBuffer);
   } else {
     // Legacy hardcoded path

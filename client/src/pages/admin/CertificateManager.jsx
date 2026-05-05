@@ -70,10 +70,12 @@ const CertificateManager = () => {
   // Lists
   const [courses, setCourses] = useState([]);
   const [cohorts, setCohorts] = useState([]);
+  const [templates, setTemplates] = useState([]);
 
   // Selections
   const [selectedId, setSelectedId] = useState('');
   const [selectedCertType, setSelectedCertType] = useState('Completion Certificate');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [enrolledStudents, setEnrolledStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [generatingFor, setGeneratingFor] = useState(null);
@@ -103,14 +105,16 @@ const CertificateManager = () => {
   const openGenerateModal = async () => {
     setIsModalOpen(true);
     try {
-      const [coursesRes, cohortsRes] = await Promise.all([
+      const [coursesRes, cohortsRes, templatesRes] = await Promise.all([
         axios.get('/api/courses'),
-        axios.get('/api/admin/cohorts')
+        axios.get('/api/admin/cohorts'),
+        axios.get('/api/cert-templates')
       ]);
       setCourses(coursesRes.data.data || []);
       setCohorts(cohortsRes.data.data || []);
+      setTemplates((templatesRes.data.data || []).filter(template => template.isActive));
     } catch (err) {
-      toast.error('Failed to load courses and courses');
+      toast.error('Failed to load certificate issue options');
     }
   };
 
@@ -119,6 +123,7 @@ const CertificateManager = () => {
     setSelectedId('');
     setEnrolledStudents([]);
     setSelectedCertType('Completion Certificate');
+    setSelectedTemplateId('');
   }, [generatorType]);
 
   const handleSelection = async (id) => {
@@ -159,6 +164,10 @@ const CertificateManager = () => {
       const payload = generatorType === 'COURSE'
         ? { userId, courseId: selectedId, certificateType: selectedCertType }
         : { userId, cohortId: selectedId, certificateType: selectedCertType };
+
+      if (selectedTemplateId) {
+        payload.templateId = selectedTemplateId;
+      }
 
       await axios.post(url, payload);
       toast.success('Certificate generated successfully!');
@@ -431,13 +440,27 @@ const CertificateManager = () => {
                         <option value="Participation Certificate">Participation Certificate</option>
                         <option value="Excellence Certificate">Excellence Certificate</option>
                       </select>
+                      <select
+                        value={selectedTemplateId}
+                        onChange={e => setSelectedTemplateId(e.target.value)}
+                        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary-500 transition-all outline-none md:col-span-2"
+                      >
+                        <option value="">Use active default template</option>
+                        {templates.map(template => (
+                          <option key={template._id} value={template._id}>
+                            {template.templateName}{template.isDefault ? ' (Default)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="flex items-center mt-4 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl border border-blue-100/50 dark:border-blue-900/20">
                       <FiLayers className="text-blue-500 mr-2 shrink-0" size={14} />
                       <p className="text-[10px] md:text-xs text-blue-700 dark:text-blue-400 leading-relaxed font-medium">
-                        {generatorType === 'COHORT'
-                          ? "Live Course Certificates can be issued to any student with an active enrollment."
-                          : "Recorded Course Certificates are typically issued upon 100% module completion."}
+                        {selectedTemplateId
+                          ? "The selected active template will be used for this issue run."
+                          : generatorType === 'COHORT'
+                            ? "Live Course Certificates can be issued to any student with an active enrollment."
+                            : "Recorded Course Certificates are typically issued upon 100% module completion."}
                       </p>
                     </div>
                   </div>

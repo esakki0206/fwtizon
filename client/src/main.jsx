@@ -7,6 +7,8 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import './index.css';
 
+import { UIProvider } from './context/UIContext.jsx';
+
 // VITE_GOOGLE_CLIENT_ID must be set in .env.local (dev) and Vercel env vars (prod).
 // Do NOT hardcode a fallback here — a fake/missing ID causes "invalid_client".
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -24,9 +26,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || ''}>
       <BrowserRouter>
         <ThemeProvider>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
+          <UIProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </UIProvider>
         </ThemeProvider>
       </BrowserRouter>
     </GoogleOAuthProvider>

@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { FiSun, FiMoon, FiMenu, FiX, FiSearch, FiUser, FiBookOpen, FiAward, FiSettings, FiLogOut, FiChevronDown, FiGrid, FiFileText } from 'react-icons/fi';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useUI } from '../../context/UIContext';
 import NotificationDropdown from './NotificationDropdown';
 import fwtLogoBlack from '../../assets/FwT - Logo - Black Tagline.png';
 import fwtLogoWhite from '../../assets/FwT - Logo - White Tagline.png';
@@ -13,9 +14,8 @@ const categories = ['Development', 'Business', 'IT & Software', 'Design', 'Marke
 const Navbar = () => {
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { isMobileMenuOpen, setIsMobileMenuOpen, toggleMobileMenu, closeMobileMenu, isSearchOpen, toggleSearch } = useUI();
   const navigate = useNavigate();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
@@ -46,7 +46,7 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     setProfileOpen(false);
-    setIsMobileMenuOpen(false);
+    closeMobileMenu();
   };
 
   return (
@@ -243,14 +243,11 @@ const Navbar = () => {
 
           {/* Mobile Controls */}
           <div className="md:hidden flex items-center space-x-1">
-            <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Search">
+            <button onClick={toggleSearch} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Search">
               <FiSearch size={20} />
             </button>
             <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Toggle theme">
               {isDarkMode ? <FiSun size={20} /> : <FiMoon size={20} />}
-            </button>
-            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Menu">
-              <FiMenu size={22} />
             </button>
           </div>
         </div>
@@ -258,7 +255,7 @@ const Navbar = () => {
 
       {/* Mobile Search Bar */}
       <AnimatePresence>
-        {searchOpen && (
+        {isSearchOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -293,7 +290,7 @@ const Navbar = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 z-[60] md:hidden backdrop-blur-sm"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={closeMobileMenu}
             />
             {/* Drawer */}
             <motion.div
@@ -306,7 +303,7 @@ const Navbar = () => {
               {/* Drawer Header */}
               <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
                 <img src={isDarkMode ? fwtLogoWhite : fwtLogoBlack} alt="FWT Logo" className="h-7 w-auto object-contain" />
-                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-900 rounded-full text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <button onClick={closeMobileMenu} className="p-2 bg-gray-100 dark:bg-gray-900 rounded-full text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
                   <FiX size={20} />
                 </button>
               </div>
@@ -327,10 +324,10 @@ const Navbar = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col space-y-3">
-                    <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-3 border-2 border-gray-200 dark:border-gray-800 rounded-xl text-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                    <Link to="/login" onClick={closeMobileMenu} className="w-full flex justify-center py-3 border-2 border-gray-200 dark:border-gray-800 rounded-xl text-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                       Log In
                     </Link>
-                    <Link to="/register" onClick={() => setIsMobileMenuOpen(false)} className="w-full flex justify-center py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-primary-600/20 transition-all">
+                    <Link to="/register" onClick={closeMobileMenu} className="w-full flex justify-center py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-primary-600/20 transition-all">
                       Sign Up Free
                     </Link>
                   </div>
@@ -338,10 +335,10 @@ const Navbar = () => {
 
                 {/* Primary Navigation */}
                 <div className="space-y-1">
-                  <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                  <Link to="/courses" onClick={closeMobileMenu} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
                     <FiBookOpen className="mr-3 opacity-70" size={18} /> All Courses
                   </Link>
-                  <Link to="/live-courses" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                  <Link to="/live-courses" onClick={closeMobileMenu} className="flex items-center px-4 py-3 rounded-xl text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
                     <svg className="w-[18px] h-[18px] mr-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg> Live Courses
                   </Link>
                 </div>
@@ -351,37 +348,37 @@ const Navbar = () => {
                   <div>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-2">Your Dashboard</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <Link to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                      <Link to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                         <FiGrid className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                         <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Overview</span>
                       </Link>
                       
                       {user.role === 'admin' ? (
                         <>
-                          <Link to="/admin/courses" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/admin/courses" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <FiBookOpen className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Manage</span>
                           </Link>
-                          <Link to="/admin/users" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/admin/users" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <FiUser className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Users</span>
                           </Link>
-                          <Link to="/admin/payments" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/admin/payments" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <svg className="w-6 h-6 text-gray-400 group-hover:text-primary-500 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" /><path d="M2 10h20M7 15h.01" /></svg>
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Payments</span>
                           </Link>
                         </>
                       ) : (
                         <>
-                          <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/dashboard" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <FiBookOpen className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">My Courses</span>
                           </Link>
-                          <Link to="/dashboard/certificates" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/dashboard/certificates" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <FiAward className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Certificates</span>
                           </Link>
-                          <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
+                          <Link to="/profile" onClick={closeMobileMenu} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 transition-all group">
                             <FiUser className="text-gray-400 group-hover:text-primary-500 mb-2" size={24} />
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Profile</span>
                           </Link>
@@ -399,7 +396,7 @@ const Navbar = () => {
                       <Link
                         key={cat}
                         to={`/courses?category=${encodeURIComponent(cat)}`}
-                        onClick={() => setIsMobileMenuOpen(false)}
+                        onClick={closeMobileMenu}
                         className="px-4 py-2 bg-gray-50 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-700 rounded-full text-[13px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-800 transition-all"
                       >
                         {cat}

@@ -4,6 +4,7 @@ import Review from '../models/Review.js';
 import Enrollment from '../models/Enrollment.js';
 import LiveCourse from '../models/LiveCourse.js';
 import Certificate from '../models/Certificate.js';
+import CertificateTemplate from '../models/CertificateTemplate.js';
 import Counter from '../models/Counter.js';
 import Notification from '../models/Notification.js';
 import mongoose from 'mongoose';
@@ -67,9 +68,49 @@ export const isFormUnlocked = (form, courseObj) => {
 
 const VALID_CERTIFICATE_TYPES = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
 
+const normalizeCertificateTypes = (certificateTypes) => {
+  const values = Array.isArray(certificateTypes) ? certificateTypes : [certificateTypes];
+  return values.filter(type => VALID_CERTIFICATE_TYPES.includes(type));
+};
+
+const getConfiguredCertificateType = (form) => {
+  const validTypes = normalizeCertificateTypes(form?.availableCertificateTypes);
+  return validTypes[0] || 'Completion Certificate';
+};
+
+const validateActiveCertificateTemplate = async (templateId, { required = false } = {}) => {
+  if (!templateId) {
+    if (!required) return null;
+    const error = new Error('Certificate template selection is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!isValidObjectId(templateId)) {
+    const error = new Error('Invalid certificate template ID');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const template = await CertificateTemplate.findById(templateId).select('_id isActive');
+  if (!template) {
+    const error = new Error('Certificate template not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!template.isActive) {
+    const error = new Error('Selected certificate template is inactive');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return template._id;
+};
+
 export const createFeedbackForm = async (req, res) => {
   try {
-    const { liveCourseId, courseId, title, instructions, questions, unlockDate, submissionDeadline, availableCertificateTypes } = req.body;
+    const { liveCourseId, courseId, title, instructions, questions, unlockDate, submissionDeadline, availableCertificateTypes, certificateTemplateId } = req.body;
 
     if ((!liveCourseId && !courseId) || !title || !questions || !questions.length) {
       return res.status(400).json({ success: false, message: 'Course ID, title, and at least one question are required' });
@@ -98,15 +139,17 @@ export const createFeedbackForm = async (req, res) => {
       }
     }
 
-    // Validate certificate types
+    // Validate admin-configured certificate type. Feedback submitters do not choose this.
     let certTypes = ['Completion Certificate'];
-    if (Array.isArray(availableCertificateTypes) && availableCertificateTypes.length > 0) {
-      const validTypes = availableCertificateTypes.filter(t => VALID_CERTIFICATE_TYPES.includes(t));
+    if (availableCertificateTypes !== undefined) {
+      const validTypes = normalizeCertificateTypes(availableCertificateTypes);
       if (validTypes.length === 0) {
         return res.status(400).json({ success: false, message: 'At least one valid certificate type is required' });
       }
-      certTypes = validTypes;
+      certTypes = [validTypes[0]];
     }
+
+    const selectedTemplateId = await validateActiveCertificateTemplate(certificateTemplateId, { required: true });
 
     const formPayload = {
       title: title.trim(),
@@ -115,6 +158,7 @@ export const createFeedbackForm = async (req, res) => {
       unlockDate: unlockDate || null,
       submissionDeadline: submissionDeadline || null,
       availableCertificateTypes: certTypes,
+      certificateTemplate: selectedTemplateId,
       createdBy: req.user.id,
     };
 
@@ -129,7 +173,7 @@ export const createFeedbackForm = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A feedback form already exists for this live course' });
     }
     console.error('Create feedback form error:', error);
-    res.status(500).json({ success: false, message: 'Failed to create feedback form' });
+    res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Failed to create feedback form' });
   }
 };
 
@@ -145,7 +189,7 @@ export const updateFeedbackForm = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Feedback form not found' });
     }
 
-    const { title, instructions, questions, unlockDate, submissionDeadline, isActive, availableCertificateTypes } = req.body;
+    const { title, instructions, questions, unlockDate, submissionDeadline, isActive, availableCertificateTypes, certificateTemplateId } = req.body;
 
     if (title !== undefined) form.title = title.trim();
     if (instructions !== undefined) form.instructions = instructions.trim();
@@ -167,20 +211,21 @@ export const updateFeedbackForm = async (req, res) => {
     if (submissionDeadline !== undefined) form.submissionDeadline = submissionDeadline || null;
     if (isActive !== undefined) form.isActive = isActive;
     if (availableCertificateTypes !== undefined) {
-      const validTypes = Array.isArray(availableCertificateTypes)
-        ? availableCertificateTypes.filter(t => VALID_CERTIFICATE_TYPES.includes(t))
-        : [];
+      const validTypes = normalizeCertificateTypes(availableCertificateTypes);
       if (validTypes.length === 0) {
         return res.status(400).json({ success: false, message: 'At least one valid certificate type is required' });
       }
-      form.availableCertificateTypes = validTypes;
+      form.availableCertificateTypes = [validTypes[0]];
+    }
+    if (certificateTemplateId !== undefined) {
+      form.certificateTemplate = await validateActiveCertificateTemplate(certificateTemplateId, { required: true });
     }
 
     await form.save();
     res.status(200).json({ success: true, data: form });
   } catch (error) {
     console.error('Update feedback form error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update feedback form' });
+    res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Failed to update feedback form' });
   }
 };
 
@@ -189,6 +234,7 @@ export const getAllFeedbackForms = async (req, res) => {
     const forms = await FeedbackForm.find()
       .populate('liveCourse', 'title status startDate endDate')
       .populate('course', 'title')
+      .populate('certificateTemplate', 'templateName isActive')
       .populate('createdBy', 'name')
       .sort('-createdAt')
       .lean();
@@ -233,6 +279,7 @@ export const getFeedbackFormById = async (req, res) => {
     const form = await FeedbackForm.findById(id)
       .populate('liveCourse', 'title status startDate endDate domain areaOfExpertise')
       .populate('course', 'title category domain areaOfExpertise')
+      .populate('certificateTemplate', 'templateName isActive')
       .populate('createdBy', 'name');
 
     if (!form) {
@@ -577,7 +624,7 @@ export const getMyFeedbackForms = async (req, res) => {
         { liveCourse: { $in: liveCourseIds } },
         { course: { $in: courseIds } }
       ]
-    }).select('liveCourse course certificateId').lean();
+    }).select('liveCourse course certificateId certificateType').lean();
 
     const certMap = new Map();
     certificates.forEach(c => {
@@ -601,8 +648,10 @@ export const getMyFeedbackForms = async (req, res) => {
         isUnlocked: unlocked,
         isSubmitted: !!submission,
         submittedAt: submission?.submittedAt || null,
+        configuredCertificateType: getConfiguredCertificateType(form),
         certificate: cert ? {
           certificateId: cert.certificateId,
+          certificateType: cert.certificateType || 'Completion Certificate',
           downloadUrl: `/api/certificates/${cert.certificateId}/download`,
           viewUrl: `/api/certificates/${cert.certificateId}/view`,
         } : null,
@@ -680,7 +729,7 @@ export const getFeedbackForm = async (req, res) => {
       const cert = await Certificate.findOne({ 
         user: req.user.id, 
         $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }] 
-      }).select('certificateId');
+      }).select('certificateId certificateType');
 
       return res.status(200).json({
         success: true,
@@ -693,6 +742,7 @@ export const getFeedbackForm = async (req, res) => {
           submittedAt: existingSubmission.submittedAt,
           certificate: cert ? {
             certificateId: cert.certificateId,
+            certificateType: cert.certificateType || 'Completion Certificate',
             downloadUrl: `/api/certificates/${cert.certificateId}/download`,
             viewUrl: `/api/certificates/${cert.certificateId}/view`,
           } : null,
@@ -700,7 +750,7 @@ export const getFeedbackForm = async (req, res) => {
       });
     }
 
-    // Return full form with questions and available certificate types
+    // Return full form with questions. Certificate type is configured by admin.
     res.status(200).json({
       success: true,
       data: {
@@ -708,7 +758,7 @@ export const getFeedbackForm = async (req, res) => {
         title: form.title,
         instructions: form.instructions,
         questions: form.questions,
-        availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
+        configuredCertificateType: getConfiguredCertificateType(form),
         course: { _id: courseObj._id, title: courseObj.title, status: courseObj.status },
         isUnlocked: true,
         isSubmitted: false,
@@ -729,7 +779,7 @@ export const getFeedbackForm = async (req, res) => {
 export const submitFeedback = async (req, res) => {
   try {
     const { formId } = req.params;
-    const { responses, certificateType } = req.body;
+    const { responses } = req.body;
 
     if (!isValidObjectId(formId)) {
       return res.status(400).json({ success: false, message: 'Invalid form ID' });
@@ -737,11 +787,6 @@ export const submitFeedback = async (req, res) => {
 
     if (!responses || !Array.isArray(responses) || !responses.length) {
       return res.status(400).json({ success: false, message: 'Responses are required' });
-    }
-
-    // Validate certificate type is provided (mandatory)
-    if (!certificateType || typeof certificateType !== 'string' || !certificateType.trim()) {
-      return res.status(400).json({ success: false, message: 'Certificate type selection is required' });
     }
 
     // Get the form
@@ -781,14 +826,7 @@ export const submitFeedback = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You have already submitted feedback for this course' });
     }
 
-    // Validate certificate type against the form's allowed types
-    const allowedTypes = form.availableCertificateTypes || ['Completion Certificate'];
-    if (!allowedTypes.includes(certificateType)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid certificate type. Allowed types: ${allowedTypes.join(', ')}`,
-      });
-    }
+    const certificateType = getConfiguredCertificateType(form);
 
     // Validate required questions are answered
     const requiredIndices = form.questions
@@ -838,6 +876,10 @@ export const submitFeedback = async (req, res) => {
     // ── Auto-generate certificate ──
     let certificateData = null;
     try {
+      const selectedFeedbackTemplateId = form.certificateTemplate
+        ? await validateActiveCertificateTemplate(form.certificateTemplate)
+        : null;
+
       // Check if certificate already exists
       const existingCert = await Certificate.findOne({
         user: req.user.id,
@@ -854,7 +896,7 @@ export const submitFeedback = async (req, res) => {
           courseId: courseObj._id,
           enrollmentId: enrollment._id,
           completionDate: new Date(),
-          templateId: null, // Use default template
+          templateId: selectedFeedbackTemplateId,
           certificateType,
         });
 
@@ -868,6 +910,7 @@ export const submitFeedback = async (req, res) => {
 
         certificateData = {
           certificateId: cert.certificateId,
+          certificateType: cert.certificateType || certificateType,
           downloadUrl: `/api/certificates/${cert.certificateId}/download`,
           viewUrl: `/api/certificates/${cert.certificateId}/view`,
         };
@@ -880,15 +923,59 @@ export const submitFeedback = async (req, res) => {
           link: '/dashboard/certificates',
         });
       } else {
+        const selectedTemplateId = selectedFeedbackTemplateId ? selectedFeedbackTemplateId.toString() : null;
+        const existingTemplateId = existingCert.templateId ? existingCert.templateId.toString() : null;
+        const shouldRefreshExistingCert =
+          (selectedTemplateId && selectedTemplateId !== existingTemplateId) ||
+          (certificateType && existingCert.certificateType !== certificateType) ||
+          (selectedTemplateId && !existingCert.templateRenderedAt);
+
+        if (shouldRefreshExistingCert) {
+          const template = selectedTemplateId
+            ? await CertificateTemplate.findOne({ _id: selectedTemplateId, isActive: true })
+            : null;
+
+          if (selectedTemplateId && !template) {
+            throw new Error('Configured certificate template is inactive or missing');
+          }
+
+          const pdfBuffer = await generateCertificatePDF({
+            studentName: existingCert.studentName,
+            courseName: existingCert.courseName || courseObj.title,
+            domain: existingCert.domain || courseObj.category || 'Professional Development',
+            areaOfExpertise: existingCert.areaOfExpertise || 'Specialized Training',
+            completionDate: existingCert.completionDate || new Date(),
+            certificateId: existingCert.certificateId,
+            serialNumber: existingCert.serialNumber || parseInt(existingCert.certificateId.split('-').pop(), 10) || 1,
+            instructorName: courseObj.instructorName || '',
+          }, template);
+
+          existingCert.fileUrl = await uploadPdfToCloudinary(
+            pdfBuffer,
+            `${existingCert.certificateId}-${req.user.id}-feedback-${Date.now()}`,
+            'fwtion/certificates'
+          );
+          existingCert.templateId = template?._id || null;
+          existingCert.templateName = template?.templateName || 'Legacy Template';
+          existingCert.templateRenderedAt = template ? new Date() : null;
+          existingCert.certificateType = certificateType;
+          await existingCert.save();
+        }
+
         certificateData = {
           certificateId: existingCert.certificateId,
+          certificateType: existingCert.certificateType || 'Completion Certificate',
           downloadUrl: `/api/certificates/${existingCert.certificateId}/download`,
           viewUrl: `/api/certificates/${existingCert.certificateId}/view`,
         };
       }
     } catch (certError) {
       console.error('Auto-certificate generation failed after feedback submission:', certError);
-      // Feedback was still submitted successfully — don't fail the whole request
+      await FeedbackSubmission.deleteOne({ _id: submission._id });
+      return res.status(500).json({
+        success: false,
+        message: 'Feedback could not be submitted because certificate generation failed. Please try again.',
+      });
     }
 
     res.status(201).json({
@@ -945,7 +1032,7 @@ export const getFeedbackStatus = async (req, res) => {
     const form = await FeedbackForm.findOne({ 
       $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }], 
       isActive: true 
-    }).select('_id title unlockDate submissionDeadline isActive course');
+    }).select('_id title unlockDate submissionDeadline isActive course availableCertificateTypes');
 
     if (!form) {
       return res.status(200).json({
@@ -971,7 +1058,7 @@ export const getFeedbackStatus = async (req, res) => {
         isUnlocked: unlocked,
         isSubmitted: !!submission,
         submittedAt: submission?.submittedAt || null,
-        availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
+        configuredCertificateType: getConfiguredCertificateType(form),
         certificate: cert ? {
           certificateId: cert.certificateId,
           certificateType: cert.certificateType || 'Completion Certificate',

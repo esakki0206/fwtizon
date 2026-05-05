@@ -47,7 +47,6 @@ const feedbackSubmissionSchema = new mongoose.Schema({
   selectedCertificateType: {
     type: String,
     enum: ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'],
-    required: [true, 'Certificate type selection is required'],
     default: 'Completion Certificate',
   },
   submittedAt: {

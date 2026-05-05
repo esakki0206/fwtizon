@@ -4,6 +4,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { protect, authorize } from '../middleware/auth.js';
 import CertificateTemplate from '../models/CertificateTemplate.js';
 import Certificate from '../models/Certificate.js';
+import FeedbackForm from '../models/FeedbackForm.js';
 import { sanitizeOverlays, validateOverlays, isValidTemplateName } from '../lib/inputValidation.js';
 
 const router = express.Router();
@@ -44,9 +45,12 @@ const uploadTemplateToCloudinary = (buffer, filename, mimetype) =>
 router.get('/', protect, async (req, res) => {
   try {
     const filter = req.user.role === 'admin' ? {} : { isActive: true };
-    const templates = await CertificateTemplate.find(filter)
-      .select('-overlays') // lightweight list
-      .sort('-createdAt');
+    const query = CertificateTemplate.find(filter).sort('-createdAt');
+    if (req.user.role !== 'admin') {
+      query.select('-overlays');
+    }
+
+    const templates = await query;
     res.json({ success: true, count: templates.length, data: templates });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
@@ -134,7 +138,18 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     
     if (description !== undefined) template.description = description.trim();
     if (orientation !== undefined) template.orientation = orientation;
-    if (isActive !== undefined) template.isActive = isActive;
+    if (isActive !== undefined) {
+      if (isActive === false || isActive === 'false') {
+        const feedbackFormCount = await FeedbackForm.countDocuments({ certificateTemplate: req.params.id });
+        if (feedbackFormCount > 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Cannot deactivate — ${feedbackFormCount} feedback form(s) use this template.`,
+          });
+        }
+      }
+      template.isActive = isActive;
+    }
     
     // Validate and sanitize overlays
     if (overlays !== undefined) {
@@ -243,6 +258,14 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Cannot delete — ${certCount} certificate(s) reference this template. Deactivate it instead.`,
+      });
+    }
+
+    const feedbackFormCount = await FeedbackForm.countDocuments({ certificateTemplate: req.params.id });
+    if (feedbackFormCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete — ${feedbackFormCount} feedback form(s) use this template. Deactivate it instead.`,
       });
     }
 

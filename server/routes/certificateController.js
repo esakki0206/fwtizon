@@ -3,6 +3,7 @@ import Receipt from '../models/Receipt.js';
 import Enrollment from '../models/Enrollment.js';
 import Counter from '../models/Counter.js';
 import CertificateTemplate from '../models/CertificateTemplate.js';
+import FeedbackForm from '../models/FeedbackForm.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 import { v2 as cloudinary } from 'cloudinary';
@@ -92,6 +93,90 @@ export const resolveTemplate = async (templateId = null) => {
 
 // ─── Certificate Generation Core ─────────────────────────────────────────────
 
+const getCertificateCourseId = (certificate, field) => {
+  const value = certificate?.[field];
+  if (!value) return null;
+  return value._id || value;
+};
+
+const getFeedbackTemplateForCertificate = async (certificate) => {
+  const filters = [];
+  const liveCourseId = getCertificateCourseId(certificate, 'liveCourse');
+  const courseId = getCertificateCourseId(certificate, 'course');
+
+  if (liveCourseId) filters.push({ liveCourse: liveCourseId });
+  if (courseId) filters.push({ course: courseId });
+  if (!filters.length) return null;
+
+  const form = await FeedbackForm.findOne({
+    $or: filters,
+    isActive: true,
+    certificateTemplate: { $ne: null },
+  })
+    .select('certificateTemplate availableCertificateTypes')
+    .populate('certificateTemplate');
+
+  if (!form?.certificateTemplate?.isActive) return null;
+
+  const certificateType = Array.isArray(form.availableCertificateTypes) && form.availableCertificateTypes[0]
+    ? form.availableCertificateTypes[0]
+    : certificate.certificateType || 'Completion Certificate';
+
+  return { template: form.certificateTemplate, certificateType };
+};
+
+const shouldRefreshCertificatePdf = (certificate, template, certificateType) => {
+  if (!template?._id) return false;
+
+  const currentTemplateId = certificate.templateId ? certificate.templateId.toString() : null;
+  const targetTemplateId = template._id.toString();
+
+  if (currentTemplateId !== targetTemplateId) return true;
+  if ((certificate.certificateType || 'Completion Certificate') !== certificateType) return true;
+  if (!certificate.fileUrl) return true;
+  if (!certificate.templateRenderedAt) return true;
+
+  const templateUpdatedAt = template.updatedAt ? new Date(template.updatedAt).getTime() : 0;
+  const renderedAt = new Date(certificate.templateRenderedAt).getTime();
+  return templateUpdatedAt > renderedAt;
+};
+
+const refreshCertificatePdf = async (certificate, template, certificateType) => {
+  const pdfBuffer = await generateCertificatePDF({
+    studentName: certificate.studentName,
+    courseName: certificate.courseName,
+    domain: certificate.domain || certificate.course?.category || certificate.liveCourse?.category || 'Professional Development',
+    areaOfExpertise: certificate.areaOfExpertise || 'Specialized Training',
+    completionDate: certificate.completionDate || certificate.issueDate || new Date(),
+    certificateId: certificate.certificateId,
+    serialNumber: certificate.serialNumber || parseInt(String(certificate.certificateId).split('-').pop(), 10) || 1,
+    instructorName: certificate.course?.instructorName || certificate.liveCourse?.instructorName || '',
+  }, template);
+
+  certificate.fileUrl = await uploadPdfToCloudinary(
+    pdfBuffer,
+    `${certificate.certificateId}-${certificate.user}-feedback-template-${Date.now()}`,
+    'fwtion/certificates'
+  );
+  certificate.templateId = template._id;
+  certificate.templateName = template.templateName;
+  certificate.templateRenderedAt = new Date();
+  certificate.certificateType = certificateType;
+  await certificate.save({ validateBeforeSave: false });
+
+  return certificate;
+};
+
+const ensureFeedbackTemplateCertificatePdf = async (certificate) => {
+  const feedbackTemplate = await getFeedbackTemplateForCertificate(certificate);
+  if (!feedbackTemplate) return certificate;
+
+  const { template, certificateType } = feedbackTemplate;
+  if (!shouldRefreshCertificatePdf(certificate, template, certificateType)) return certificate;
+
+  return refreshCertificatePdf(certificate, template, certificateType);
+};
+
 export const buildAndStoreCertificate = async ({
   userId, userEmail, userName, courseRef, courseType, courseId,
   enrollmentId, completionDate, templateId, certificateType,
@@ -138,6 +223,7 @@ export const buildAndStoreCertificate = async ({
     enrollment: enrollmentId,
     templateId: template?._id || null,
     templateName: template?.templateName || 'Legacy Template',
+    templateRenderedAt: template ? new Date() : null,
   });
 
   return cert;
@@ -272,13 +358,15 @@ export const getCertificateById = async (req, res) => {
 export const serveCertificatePDF = async (req, res) => {
   try {
     const certificate = await Certificate.findOne({ certificateId: req.params.certificateId })
-      .select('certificateId fileUrl');
+      .populate('course', 'category instructorName')
+      .populate('liveCourse', 'category instructorName');
 
     if (!certificate) return res.status(404).json({ success: false, message: 'Certificate not found' });
 
+    const certificateToServe = await ensureFeedbackTemplateCertificatePdf(certificate);
     const disposition = req.path.endsWith('/download') ? 'attachment' : 'inline';
-    await sendCloudinaryPdf(res, certificate.fileUrl, {
-      filename: `${certificate.certificateId}.pdf`,
+    await sendCloudinaryPdf(res, certificateToServe.fileUrl, {
+      filename: `${certificateToServe.certificateId}.pdf`,
       disposition,
     });
   } catch (error) {

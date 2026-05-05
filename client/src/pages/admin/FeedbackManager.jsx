@@ -281,6 +281,7 @@ const FeedbackManager = () => {
   const [forms, setForms] = useState([]);
   const [liveCourses, setLiveCourses] = useState([]);
   const [courseOptions, setCourseOptions] = useState([]);
+  const [certificateTemplates, setCertificateTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [feedbackSummary, setFeedbackSummary] = useState(null);
@@ -293,7 +294,7 @@ const FeedbackManager = () => {
   const [loadingResponses, setLoadingResponses] = useState(false);
 
   // Form state
-  const [formData, setFormData] = useState({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
+  const [formData, setFormData] = useState({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', certificateTemplateId: '', questions: [emptyQuestion()] });
   const debouncedSearch = useDebouncedValue(feedbackFilters.search, 350);
 
   const fetchForms = useCallback(async () => {
@@ -329,6 +330,18 @@ const FeedbackManager = () => {
     }
   }, []);
 
+  const fetchCertificateTemplates = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/cert-templates');
+      const activeTemplates = (res.data.data || []).filter(template => template.isActive);
+      setCertificateTemplates(activeTemplates);
+      return activeTemplates;
+    } catch {
+      setCertificateTemplates([]);
+      return [];
+    }
+  }, []);
+
   const fetchFeedbackSummary = useCallback(async () => {
     try {
       setSummaryLoading(true);
@@ -352,6 +365,7 @@ const FeedbackManager = () => {
 
   useEffect(() => { fetchForms(); }, [fetchForms]);
   useEffect(() => { fetchCourseOptions(); }, [fetchCourseOptions]);
+  useEffect(() => { fetchCertificateTemplates(); }, [fetchCertificateTemplates]);
   useEffect(() => { fetchFeedbackSummary(); }, [fetchFeedbackSummary]);
 
   const updateFeedbackFilter = (field, value) => {
@@ -376,14 +390,23 @@ const FeedbackManager = () => {
   };
 
   const openCreateModal = async () => {
-    await fetchCourseOptions();
+    const [, activeTemplates] = await Promise.all([fetchCourseOptions(), fetchCertificateTemplates()]);
     setEditingForm(null);
-    setFormData({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()], availableCertificateTypes: ['Completion Certificate'] });
+    setFormData({
+      selectedCourseId: '',
+      title: '',
+      instructions: '',
+      unlockDate: '',
+      submissionDeadline: '',
+      certificateTemplateId: activeTemplates.find(template => template.isDefault)?._id || activeTemplates[0]?._id || '',
+      questions: [emptyQuestion()],
+      availableCertificateTypes: ['Completion Certificate'],
+    });
     setModalOpen(true);
   };
 
   const openEditModal = async (form) => {
-    await fetchCourseOptions();
+    await Promise.all([fetchCourseOptions(), fetchCertificateTemplates()]);
     setEditingForm(form);
     setFormData({
       selectedCourseId: form.liveCourse?._id || form.course?._id || '',
@@ -391,7 +414,8 @@ const FeedbackManager = () => {
       instructions: form.instructions || '',
       unlockDate: formatLocalDatetime(form.unlockDate),
       submissionDeadline: formatLocalDatetime(form.submissionDeadline),
-      availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
+      certificateTemplateId: form.certificateTemplate?._id || form.certificateTemplate || '',
+      availableCertificateTypes: [form.availableCertificateTypes?.[0] || 'Completion Certificate'],
       questions: form.questions.map(q => ({ text: q.text, type: q.type, required: q.required, options: q.options || [] })),
     });
     setModalOpen(true);
@@ -400,6 +424,7 @@ const FeedbackManager = () => {
   const handleSave = async () => {
     if (!formData.title.trim()) return toast.error('Title is required');
     if (!formData.availableCertificateTypes || formData.availableCertificateTypes.length === 0) return toast.error('At least one certificate type must be selected');
+    if (!formData.certificateTemplateId) return toast.error('Select a certificate template');
     if (!formData.questions.length || formData.questions.some(q => !q.text.trim())) return toast.error('All questions must have text');
     if (!editingForm && !formData.selectedCourseId) return toast.error('Select a course');
 
@@ -409,6 +434,7 @@ const FeedbackManager = () => {
           title: formData.title, instructions: formData.instructions, questions: formData.questions,
           unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
           availableCertificateTypes: formData.availableCertificateTypes,
+          certificateTemplateId: formData.certificateTemplateId,
         });
         toast.success('Form updated');
       } else {
@@ -417,6 +443,7 @@ const FeedbackManager = () => {
           title: formData.title, instructions: formData.instructions,
           questions: formData.questions, unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
           availableCertificateTypes: formData.availableCertificateTypes,
+          certificateTemplateId: formData.certificateTemplateId,
         };
         if (selectedCourse?.isLiveCohort) payload.liveCourseId = selectedCourse._id;
         else payload.courseId = formData.selectedCourseId;
@@ -525,6 +552,21 @@ const FeedbackManager = () => {
                     <StatusBadge isUnlocked={form.isUnlocked} isActive={form.isActive} />
                   </div>
                   <p className="text-xs text-gray-500 mb-2">Course: <span className="font-semibold text-gray-700 dark:text-gray-300">{form.liveCourse?.title || form.course?.title || 'Unknown'}</span> <span className="ml-1 text-[10px] uppercase font-bold text-gray-400">({form.liveCourse ? 'Live' : 'Normal'})</span></p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Certificate Template:{' '}
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      {form.certificateTemplate?.templateName || 'Not configured'}
+                    </span>
+                    {form.certificateTemplate && !form.certificateTemplate.isActive && (
+                      <span className="ml-2 text-[10px] font-bold uppercase text-amber-600">Inactive</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Certificate Type:{' '}
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      {form.availableCertificateTypes?.[0] || 'Completion Certificate'}
+                    </span>
+                  </p>
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <span className="flex items-center"><FiUsers className="mr-1" size={12} />{form.stats?.totalEnrolled || 0} enrolled</span>
                     <span className="flex items-center"><FiCheckCircle className="mr-1" size={12} />{form.stats?.totalSubmissions || 0} submitted</span>
@@ -590,25 +632,35 @@ const FeedbackManager = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Available Certificate Types *</label>
-                  <div className="space-y-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Certificate Type *</label>
+                  <select
+                    value={formData.availableCertificateTypes?.[0] || 'Completion Certificate'}
+                    onChange={e => setFormData(p => ({ ...p, availableCertificateTypes: [e.target.value] }))}
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  >
                     {['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'].map(type => (
-                      <label key={type} className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox"
-                          checked={(formData.availableCertificateTypes || []).includes(type)}
-                          onChange={(e) => {
-                            const current = formData.availableCertificateTypes || [];
-                            const updated = e.target.checked
-                              ? [...current, type]
-                              : current.filter(t => t !== type);
-                            setFormData(p => ({ ...p, availableCertificateTypes: updated }));
-                          }}
-                          className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{type}</span>
-                      </label>
+                      <option key={type} value={type}>{type}</option>
                     ))}
-                  </div>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Certificate Template *</label>
+                  <select
+                    value={formData.certificateTemplateId}
+                    onChange={e => setFormData(p => ({ ...p, certificateTemplateId: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  >
+                    <option value="">-- Select Certificate Template --</option>
+                    {certificateTemplates.map(template => (
+                      <option key={template._id} value={template._id}>
+                        {template.templateName}{template.isDefault ? ' (Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {certificateTemplates.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-2">Create and activate a certificate template before enabling certificate delivery.</p>
+                  )}
                 </div>
 
                 {/* Questions Builder */}

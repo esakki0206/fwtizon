@@ -23,7 +23,6 @@ const StarRating = ({ value, onChange }) => {
 
 const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess }) => {
   const [responses, setResponses] = useState({});
-  const [certificateType, setCertificateType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [errors, setErrors] = useState({});
@@ -38,10 +37,6 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
   const validate = () => {
     const newErrors = {};
     
-    if (formData.availableCertificateTypes?.length > 0 && !certificateType) {
-      newErrors.certificateType = 'Please select a certificate type';
-    }
-
     formData.questions?.forEach((q, idx) => {
       if (q.required) {
         const val = responses[idx];
@@ -62,8 +57,9 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
     try {
       setSubmitting(true);
       const payloadData = { responses: payload };
-      if (certificateType) {
-        payloadData.certificateType = certificateType;
+      const configuredCertificateType = formData.configuredCertificateType || formData.availableCertificateTypes?.[0];
+      if (configuredCertificateType) {
+        payloadData.certificateType = configuredCertificateType;
       }
       const res = await axios.post(`/api/feedback/submit/${formData._id}`, payloadData);
       setResult(res.data.data);
@@ -78,7 +74,6 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
 
   const handleClose = () => {
     setResponses({});
-    setCertificateType('');
     setErrors({});
     setResult(null);
     onClose();
@@ -113,12 +108,17 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
                 {result.certificate && (
                   <div className="bg-primary-50 dark:bg-primary-900/20 rounded-2xl p-5 border border-primary-200 dark:border-primary-800 mb-4">
                     <p className="text-sm font-bold text-primary-700 dark:text-primary-400 mb-3">🎉 Your certificate is ready!</p>
+                    {result.certificate.certificateType && (
+                      <p className="text-xs font-semibold text-primary-700 dark:text-primary-300 mb-3">
+                        {result.certificate.certificateType}
+                      </p>
+                    )}
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
                       <button
                         onClick={async () => {
                           const toastId = toast.loading('Opening certificate…');
                           try {
-                            const url = `${BACKEND_BASE}${result.certificate.viewUrl}`;
+                            const url = `${BACKEND_BASE}${result.certificate.viewUrl}?t=${Date.now()}`;
                             const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
                             const blob = new Blob([res.data], { type: 'application/pdf' });
                             const blobUrl = URL.createObjectURL(blob);
@@ -137,7 +137,7 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
                         onClick={async () => {
                           const toastId = toast.loading('Preparing download…');
                           try {
-                            const url = `${BACKEND_BASE}${result.certificate.downloadUrl}`;
+                            const url = `${BACKEND_BASE}${result.certificate.viewUrl}?download=${Date.now()}`;
                             const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
                             const blob = new Blob([res.data], { type: 'application/pdf' });
                             const blobUrl = URL.createObjectURL(blob);
@@ -167,30 +167,6 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
                 {formData.instructions && (
                   <div className="bg-blue-50 dark:bg-blue-900/15 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
                     <p className="text-sm text-blue-700 dark:text-blue-300">{formData.instructions}</p>
-                  </div>
-                )}
-
-                {formData.availableCertificateTypes?.length > 0 && (
-                  <div className="bg-amber-50 dark:bg-amber-900/15 rounded-xl p-5 border border-amber-200 dark:border-amber-800">
-                    <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">
-                      Select Certificate Type <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={certificateType}
-                      onChange={(e) => {
-                        setCertificateType(e.target.value);
-                        setErrors(prev => { const n = { ...prev }; delete n.certificateType; return n; });
-                      }}
-                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    >
-                      <option value="">-- Choose Certificate Type --</option>
-                      {formData.availableCertificateTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                    {errors.certificateType && (
-                      <p className="text-xs text-red-500 flex items-center mt-2"><FiAlertCircle className="mr-1" size={12} />{errors.certificateType}</p>
-                    )}
                   </div>
                 )}
 

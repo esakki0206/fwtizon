@@ -277,8 +277,11 @@ const MyCertificates = () => {
 // ─── Certificate Card ─────────────────────────────────────────────────────────
 const CertificateCard = ({ cert }) => {
   const thumbnail = cert.course?.thumbnail || cert.liveCourse?.thumbnail || null;
-  const downloadUrl = cert.downloadUrl || `/api/certificates/${cert.certificateId}/download`;
   const viewUrl = cert.viewUrl || `/api/certificates/${cert.certificateId}/view`;
+  const getCertificateDownloadUrl = () => {
+    const separator = viewUrl.includes('?') ? '&' : '?';
+    return `${viewUrl}${separator}download=${Date.now()}`;
+  };
   const isCohort = cert.type === 'COHORT';
 
   return (
@@ -327,7 +330,7 @@ const CertificateCard = ({ cert }) => {
 
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2">
-        <button onClick={() => downloadPdf(downloadUrl, `${cert.certificateId}.pdf`)}
+        <button onClick={() => downloadPdf(getCertificateDownloadUrl(), `${cert.certificateId}.pdf`)}
           className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white text-xs font-bold py-2.5 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-primary-500/20 active:scale-[0.98]">
           <FiDownload size={13} /> Download
         </button>

@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { FiSun, FiMoon, FiMenu, FiX, FiSearch, FiUser, FiBookOpen, FiAward, FiSettings, FiLogOut, FiChevronDown, FiGrid, FiFileText } from 'react-icons/fi';
+import { FiSun, FiMoon, FiX, FiSearch, FiUser, FiBookOpen, FiAward, FiLogOut, FiChevronDown, FiGrid, FiFileText } from 'react-icons/fi';
 import { useState, useRef, useEffect } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUI } from '../../context/UIContext';
 import NotificationDropdown from './NotificationDropdown';
@@ -14,7 +15,7 @@ const categories = ['Development', 'Business', 'IT & Software', 'Design', 'Marke
 const Navbar = () => {
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
-  const { isMobileMenuOpen, setIsMobileMenuOpen, toggleMobileMenu, closeMobileMenu, isSearchOpen, toggleSearch } = useUI();
+  const { isMobileMenuOpen, closeMobileMenu, isSearchOpen, toggleSearch, closeSearch } = useUI();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
@@ -33,13 +34,24 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    if (!isMobileMenuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
+
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchTerm.trim()) {
       navigate(`/courses?keyword=${encodeURIComponent(searchTerm.trim())}`);
       setSearchTerm('');
-      setSearchOpen(false);
-      setIsMobileMenuOpen(false);
+      closeSearch();
+      closeMobileMenu();
     }
   };
 
@@ -50,7 +62,8 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed w-full z-50 transition-all duration-300 backdrop-blur-xl bg-white/80 dark:bg-gray-950/80 border-b border-gray-200/80 dark:border-gray-800/80 shadow-sm shadow-gray-200/20 dark:shadow-black/20">
+    <>
+      <nav className="fixed inset-x-0 top-0 z-[80] transition-all duration-300 backdrop-blur-xl bg-white/95 dark:bg-gray-950/95 border-b border-gray-200/80 dark:border-gray-800/80 shadow-sm shadow-gray-200/20 dark:shadow-black/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
 
@@ -279,6 +292,7 @@ const Navbar = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      </nav>
 
       {/* Mobile Menu Drawer (Side Slide-in) */}
       <AnimatePresence>
@@ -289,7 +303,7 @@ const Navbar = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-[60] md:hidden backdrop-blur-sm"
+              className="fixed inset-0 bg-black/60 z-[90] md:hidden backdrop-blur-sm"
               onClick={closeMobileMenu}
             />
             {/* Drawer */}
@@ -298,10 +312,10 @@ const Navbar = () => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 h-full w-[85vw] max-w-sm bg-white dark:bg-gray-950 z-[70] shadow-2xl flex flex-col md:hidden"
+              className="fixed inset-y-0 right-0 z-[100] w-[min(88vw,24rem)] bg-white dark:bg-gray-950 shadow-2xl flex flex-col md:hidden"
             >
               {/* Drawer Header */}
-              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex shrink-0 items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
                 <img src={isDarkMode ? fwtLogoWhite : fwtLogoBlack} alt="FWT Logo" className="h-7 w-auto object-contain" />
                 <button onClick={closeMobileMenu} className="p-2 bg-gray-100 dark:bg-gray-900 rounded-full text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
                   <FiX size={20} />
@@ -309,7 +323,7 @@ const Navbar = () => {
               </div>
 
               {/* Drawer Content */}
-              <div className="flex-1 overflow-y-auto py-5 px-4 space-y-8">
+              <div className="min-h-0 flex-1 overflow-y-auto py-5 px-4 space-y-8">
                 {user ? (
                   <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center space-x-4">
                     <img
@@ -408,7 +422,10 @@ const Navbar = () => {
 
               {/* Drawer Footer (Logout) */}
               {user && (
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20 mt-auto">
+                <div
+                  className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20 mt-auto"
+                  style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+                >
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center justify-center py-3.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
@@ -421,7 +438,7 @@ const Navbar = () => {
           </>
         )}
       </AnimatePresence>
-    </nav>
+    </>
   );
 };
 

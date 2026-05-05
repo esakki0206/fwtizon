@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers, FiSearch, FiAlertTriangle, FiBarChart2, FiTrendingUp, FiRotateCw } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers, FiSearch, FiAlertTriangle, FiBarChart2, FiTrendingUp, FiRotateCw, FiDownload } from 'react-icons/fi';
 import { Button } from '../../components/ui/button';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
@@ -14,6 +14,12 @@ const QUESTION_TYPES = [
 ];
 
 const emptyQuestion = () => ({ text: '', type: 'rating', required: true, options: [] });
+
+const getDownloadFilename = (contentDisposition, fallback) => {
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(contentDisposition || '');
+  if (!match?.[1]) return fallback;
+  return decodeURIComponent(match[1].replace(/^"|"$/g, ''));
+};
 
 const StatusBadge = ({ isUnlocked, isActive }) => {
   if (!isActive) return <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>;
@@ -477,6 +483,33 @@ const FeedbackManager = () => {
     finally { setLoadingResponses(false); }
   };
 
+  const exportResponses = async (form) => {
+    const toastId = toast.loading('Preparing Excel export...');
+    try {
+      const res = await axios.get(`/api/admin/feedback-forms/${form._id}/export`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = getDownloadFilename(
+        res.headers?.['content-disposition'],
+        `${form.title || 'feedback'}-responses.xlsx`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      toast.success('Excel export downloaded', { id: toastId });
+    } catch (err) {
+      console.error('Feedback export error:', err);
+      toast.error(err.response?.data?.message || 'Failed to export feedback', { id: toastId });
+    }
+  };
+
   const handleResetSubmission = async (formId, subId) => {
     if (!window.confirm('Reset this submission? The student can resubmit.')) return;
     try { await axios.delete(`/api/admin/feedback-forms/${formId}/submissions/${subId}/reset`); toast.success('Reset'); viewResponses(responsesModal); }
@@ -575,6 +608,7 @@ const FeedbackManager = () => {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button variant="outline" size="sm" onClick={() => viewResponses(form)} title="View responses"><FiEye size={14} /></Button>
+                  <Button variant="outline" size="sm" onClick={() => exportResponses(form)} title="Export responses to Excel" disabled={(form.stats?.totalSubmissions || 0) === 0}><FiDownload size={14} /></Button>
                   <Button variant="outline" size="sm" onClick={() => openEditModal(form)} title="Edit"><FiEdit2 size={14} /></Button>
                   <Button variant="outline" size="sm" onClick={() => handleToggle(form._id)} title={form.isActive ? 'Disable' : 'Enable'}>
                     {form.isActive ? <FiToggleRight size={14} className="text-green-500" /> : <FiToggleLeft size={14} className="text-gray-400" />}
@@ -730,7 +764,18 @@ const FeedbackManager = () => {
                   <h2 className="text-lg font-bold">Responses — {responsesModal.title}</h2>
                   {responsesData && <p className="text-xs text-gray-500 mt-0.5">{responsesData.stats?.submitted || 0} submitted · {responsesData.stats?.pending || 0} pending</p>}
                 </div>
-                <button onClick={() => { setResponsesModal(null); setResponsesData(null); }} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22} /></button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportResponses(responsesModal)}
+                    disabled={(responsesData?.stats?.submitted || 0) === 0}
+                    title="Export responses to Excel"
+                  >
+                    <FiDownload size={14} className="mr-1" /> Export Excel
+                  </Button>
+                  <button onClick={() => { setResponsesModal(null); setResponsesData(null); }} className="text-gray-400 hover:text-gray-600"><FiXCircle size={22} /></button>
+                </div>
               </div>
               <div className="p-6 overflow-y-auto flex-1">
                 {loadingResponses ? (

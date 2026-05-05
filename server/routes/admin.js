@@ -29,6 +29,7 @@ import {
   deleteFeedbackForm,
   toggleFeedbackForm,
   getFormResponses,
+  exportFormResponses,
   resetSubmission,
   getCourseFeedbackSummary,
 } from './feedbackController.js';
@@ -2309,6 +2310,7 @@ router.get('/feedback-forms/:id', protect, authorize('admin'), getFeedbackFormBy
 router.delete('/feedback-forms/:id', protect, authorize('admin'), deleteFeedbackForm);
 router.patch('/feedback-forms/:id/toggle', protect, authorize('admin'), toggleFeedbackForm);
 router.get('/feedback-forms/:id/responses', protect, authorize('admin'), getFormResponses);
+router.get('/feedback-forms/:id/export', protect, authorize('admin'), exportFormResponses);
 router.delete('/feedback-forms/:id/submissions/:subId/reset', protect, authorize('admin'), resetSubmission);
 router.get('/feedback-summary', protect, authorize('admin'), getCourseFeedbackSummary);
 

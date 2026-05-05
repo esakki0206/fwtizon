@@ -8,6 +8,7 @@ import CertificateTemplate from '../models/CertificateTemplate.js';
 import Counter from '../models/Counter.js';
 import Notification from '../models/Notification.js';
 import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
 import { buildFeedbackInsights } from '../utils/feedbackInsights.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
@@ -15,6 +16,40 @@ import { buildAndStoreCertificate } from './certificateController.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const sanitizeExportFilename = (value, fallback = 'feedback-responses') => {
+  const safe = String(value || fallback)
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return safe || fallback;
+};
+
+const formatExportDateTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const normalizeExcelAnswer = (answer) => {
+  if (answer === undefined || answer === null) return '';
+  if (answer instanceof Date) return formatExportDateTime(answer);
+  if (Array.isArray(answer)) {
+    return answer.map(normalizeExcelAnswer).filter(Boolean).join(', ');
+  }
+  if (typeof answer === 'object') {
+    return JSON.stringify(answer);
+  }
+  return String(answer);
+};
 
 const parseDateFilter = (value, boundary) => {
   if (!value) return null;
@@ -380,6 +415,147 @@ export const getFormResponses = async (req, res) => {
   } catch (error) {
     console.error('Get form responses error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch responses' });
+  }
+};
+
+export const exportFormResponses = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid form ID' });
+    }
+
+    const form = await FeedbackForm.findById(id)
+      .populate('liveCourse', 'title')
+      .populate('course', 'title')
+      .lean();
+
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'Feedback form not found' });
+    }
+
+    const questions = Array.isArray(form.questions) ? form.questions : [];
+    const submissions = await FeedbackSubmission.find({ feedbackForm: id })
+      .populate('user', 'name email')
+      .populate('liveCourse', 'title')
+      .populate('course', 'title')
+      .sort('submittedAt')
+      .lean();
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'FWT iZON';
+    workbook.created = new Date();
+
+    const responsesSheet = workbook.addWorksheet('Responses', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+      properties: { defaultRowHeight: 20 },
+    });
+
+    const baseColumns = [
+      { header: 'Submitted At (IST)', key: 'submittedAt', width: 22 },
+      { header: 'Student Name', key: 'studentName', width: 28 },
+      { header: 'Student Email', key: 'studentEmail', width: 34 },
+      { header: 'Course', key: 'courseTitle', width: 36 },
+      { header: 'Certificate Type', key: 'certificateType', width: 26 },
+    ];
+
+    const questionColumns = questions.map((question, index) => ({
+      header: `Q${index + 1}: ${question.text}`,
+      key: `q_${index}`,
+      width: Math.min(Math.max(String(question.text || '').length + 8, 18), 60),
+    }));
+
+    responsesSheet.columns = [...baseColumns, ...questionColumns];
+
+    responsesSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    responsesSheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1F2937' },
+    };
+    responsesSheet.getRow(1).alignment = { vertical: 'middle', wrapText: true };
+
+    submissions.forEach((submission) => {
+      const responseMap = new Map(
+        (submission.responses || []).map((response) => [Number(response.questionIndex), response.answer])
+      );
+
+      const row = {
+        submittedAt: formatExportDateTime(submission.submittedAt || submission.createdAt),
+        studentName: submission.user?.name || '',
+        studentEmail: submission.user?.email || '',
+        courseTitle: submission.liveCourse?.title || submission.course?.title || form.liveCourse?.title || form.course?.title || '',
+        certificateType: submission.selectedCertificateType || '',
+      };
+
+      questions.forEach((_question, index) => {
+        row[`q_${index}`] = normalizeExcelAnswer(responseMap.get(index));
+      });
+
+      responsesSheet.addRow(row);
+    });
+
+    responsesSheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.alignment = { vertical: 'top', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+      });
+      if (rowNumber > 1) row.height = 28;
+    });
+
+    responsesSheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: responsesSheet.columnCount },
+    };
+
+    const questionSheet = workbook.addWorksheet('Questions', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+    questionSheet.columns = [
+      { header: 'Question No.', key: 'number', width: 14 },
+      { header: 'Question Text', key: 'text', width: 70 },
+      { header: 'Type', key: 'type', width: 18 },
+      { header: 'Required', key: 'required', width: 14 },
+      { header: 'Options', key: 'options', width: 50 },
+    ];
+    questionSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    questionSheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF374151' },
+    };
+    questions.forEach((question, index) => {
+      questionSheet.addRow({
+        number: index + 1,
+        text: question.text || '',
+        type: question.type || '',
+        required: question.required ? 'Yes' : 'No',
+        options: Array.isArray(question.options) ? question.options.join(', ') : '',
+      });
+    });
+    questionSheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.alignment = { vertical: 'top', wrapText: true };
+      });
+    });
+
+    const courseTitle = form.liveCourse?.title || form.course?.title || 'course';
+    const filename = `${sanitizeExportFilename(courseTitle)}-${sanitizeExportFilename(form.title)}-feedback.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Export form responses error:', error);
+    res.status(500).json({ success: false, message: 'Failed to export feedback responses' });
   }
 };
 

@@ -13,22 +13,22 @@ const seed = async () => {
     console.log(`MongoDB Connected: ${mongoose.connection.host}`);
 
     // ── Admin ──
-    let admin = await User.findOne({ email: 'admin@fwtion.com' });
+    let admin = await User.findOne({ email: 'admin@fwtion1.com' });
     if (!admin) {
       admin = await User.create({
         name: 'System Admin',
-        email: 'admin@fwtion.com',
+        email: 'admin@fwtion1.com',
         password: 'password123',
         role: 'admin',
       });
-      console.log('✓ Admin created: admin@fwtion.com / password123');
+      console.log('✓ Admin created: admin@fwtion1.com / password123');
     } else {
       console.log('● Admin already exists.');
     }
 
     console.log('\n✅ Seeding complete!');
     console.log('─────────────────────────────────');
-    console.log('Admin:   admin@fwtion.com / password123');
+    console.log('Admin:   admin@fwtion1.com / password123');
     console.log('─────────────────────────────────');
 
     process.exit(0);

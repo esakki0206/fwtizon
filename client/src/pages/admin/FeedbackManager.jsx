@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers, FiSearch, FiAlertTriangle, FiBarChart2, FiTrendingUp } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiEye, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiMessageSquare, FiXCircle, FiChevronDown, FiChevronUp, FiStar, FiCheckCircle, FiClock, FiUsers, FiSearch, FiAlertTriangle, FiBarChart2, FiTrendingUp, FiRotateCw } from 'react-icons/fi';
 import { Button } from '../../components/ui/button';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
@@ -320,7 +320,7 @@ const FeedbackManager = () => {
       ]);
       const courses = (coursesRes.data.data || []).map(c => ({ ...c, isLiveCohort: false }));
       const live = (liveRes.data.data || []).map(c => ({ ...c, isLiveCohort: true }));
-      
+
       // Merge and sort alphabetically
       const combined = [...courses, ...live].sort((a, b) => a.title.localeCompare(b.title));
       setCourseOptions(combined);
@@ -378,7 +378,7 @@ const FeedbackManager = () => {
   const openCreateModal = async () => {
     await fetchCourseOptions();
     setEditingForm(null);
-    setFormData({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()] });
+    setFormData({ selectedCourseId: '', title: '', instructions: '', unlockDate: '', submissionDeadline: '', questions: [emptyQuestion()], availableCertificateTypes: ['Completion Certificate'] });
     setModalOpen(true);
   };
 
@@ -391,6 +391,7 @@ const FeedbackManager = () => {
       instructions: form.instructions || '',
       unlockDate: formatLocalDatetime(form.unlockDate),
       submissionDeadline: formatLocalDatetime(form.submissionDeadline),
+      availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
       questions: form.questions.map(q => ({ text: q.text, type: q.type, required: q.required, options: q.options || [] })),
     });
     setModalOpen(true);
@@ -398,6 +399,7 @@ const FeedbackManager = () => {
 
   const handleSave = async () => {
     if (!formData.title.trim()) return toast.error('Title is required');
+    if (!formData.availableCertificateTypes || formData.availableCertificateTypes.length === 0) return toast.error('At least one certificate type must be selected');
     if (!formData.questions.length || formData.questions.some(q => !q.text.trim())) return toast.error('All questions must have text');
     if (!editingForm && !formData.selectedCourseId) return toast.error('Select a course');
 
@@ -406,6 +408,7 @@ const FeedbackManager = () => {
         await axios.put(`/api/admin/feedback-forms/${editingForm._id}`, {
           title: formData.title, instructions: formData.instructions, questions: formData.questions,
           unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
+          availableCertificateTypes: formData.availableCertificateTypes,
         });
         toast.success('Form updated');
       } else {
@@ -413,6 +416,7 @@ const FeedbackManager = () => {
         const payload = {
           title: formData.title, instructions: formData.instructions,
           questions: formData.questions, unlockDate: toUTCString(formData.unlockDate), submissionDeadline: toUTCString(formData.submissionDeadline),
+          availableCertificateTypes: formData.availableCertificateTypes,
         };
         if (selectedCourse?.isLiveCohort) payload.liveCourseId = selectedCourse._id;
         else payload.courseId = formData.selectedCourseId;
@@ -582,6 +586,28 @@ const FeedbackManager = () => {
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Submission Deadline (optional)</label>
                     <input type="datetime-local" value={formData.submissionDeadline} onChange={e => setFormData(p => ({ ...p, submissionDeadline: e.target.value }))}
                       className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Available Certificate Types *</label>
+                  <div className="space-y-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                    {['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'].map(type => (
+                      <label key={type} className="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox"
+                          checked={(formData.availableCertificateTypes || []).includes(type)}
+                          onChange={(e) => {
+                            const current = formData.availableCertificateTypes || [];
+                            const updated = e.target.checked
+                              ? [...current, type]
+                              : current.filter(t => t !== type);
+                            setFormData(p => ({ ...p, availableCertificateTypes: updated }));
+                          }}
+                          className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{type}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
 

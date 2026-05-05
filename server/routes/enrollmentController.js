@@ -15,6 +15,7 @@ import { validateCouponForCourse } from './couponController.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { generateReceiptPDF } from '../utils/generateReceiptPDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import { buildAndStoreCertificate } from './certificateController.js';
 
 // ── Input Validation ────────────────────────────────────────────────────────
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
@@ -286,12 +287,21 @@ const enrollUserInCourse = async ({
     }
   }
 
-  // 4. Update Course Enrollment Count
+  // 4. Update Course Enrollment Count (computed from actual enrollment records)
   if (liveCourseId) {
-    enrolledItem.currentEnrollments = (enrolledItem.currentEnrollments || 0) + 1;
+    const actualCount = await Enrollment.countDocuments({
+      liveCourse: liveCourseId,
+      status: { $in: ['active', 'completed'] }
+    });
+    // +1 because the new enrollment hasn't been created yet
+    enrolledItem.currentEnrollments = actualCount + 1;
     await enrolledItem.save();
   } else if (courseId) {
-    enrolledItem.enrollmentCount = (enrolledItem.enrollmentCount || 0) + 1;
+    const actualCount = await Enrollment.countDocuments({
+      course: courseId,
+      status: { $in: ['active', 'completed'] }
+    });
+    enrolledItem.enrollmentCount = actualCount + 1;
     await enrolledItem.save();
   }
 
@@ -699,44 +709,20 @@ export const updateProgress = async (req, res) => {
             enrollment.completedAt = new Date();
             enrollment.progress.percentComplete = 100;
 
+            // Auto-generate certificate using active template
             try {
-              const serialNumber = await Counter.getNextSequence('certificates');
-              const paddedSerial = String(serialNumber).padStart(4, '0');
-              const currentYear = new Date().getFullYear();
-              const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
-
-              const pdfData = {
-                studentName: req.user.name,
-                courseName: enrollment.course.title,
-                domain: enrollment.course.category || 'Professional Development',
-                areaOfExpertise: 'Specialized Training',
+              const cert = await buildAndStoreCertificate({
+                userId: req.user.id,
+                userEmail: req.user.email,
+                userName: req.user.name,
+                courseRef: enrollment.course,
+                courseType: 'course',
+                courseId: enrollment.course._id,
+                enrollmentId: enrollment._id,
                 completionDate: enrollment.completedAt,
-                certificateId,
-                serialNumber,
-              };
-
-              const pdfBuffer = await generateCertificatePDF(pdfData);
-              const fileUrl = await uploadPdfToCloudinary(
-                pdfBuffer,
-                `${certificateId}-${req.user.id}`,
-                'fwtion/certificates'
-              );
-
-              await Certificate.create({
-                certificateId,
-                user: req.user.id,
-                course: courseId,
-                studentName: req.user.name,
-                studentEmail: req.user.email,
-                courseName: enrollment.course.title,
-                domain: pdfData.domain,
-                areaOfExpertise: pdfData.areaOfExpertise,
-                issueDate: new Date(),
-                completionDate: pdfData.completionDate,
-                serialNumber,
-                fileUrl,
-                enrollment: enrollment._id,
+                templateId: null, // use default template
               });
+              enrollment.certificateId = cert.certificateId;
             } catch (certError) {
               console.error('Failed to auto-generate certificate:', certError);
             }

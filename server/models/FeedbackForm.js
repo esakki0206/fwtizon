@@ -63,6 +63,17 @@ const feedbackFormSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  availableCertificateTypes: {
+    type: [String],
+    enum: ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'],
+    default: ['Completion Certificate'],
+    validate: {
+      validator: function (arr) {
+        return arr && arr.length > 0;
+      },
+      message: 'At least one certificate type is required',
+    },
+  },
   createdBy: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',

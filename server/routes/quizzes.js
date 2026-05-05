@@ -3,6 +3,7 @@ import Quiz from '../models/Quiz.js';
 import Enrollment from '../models/Enrollment.js';
 import Notification from '../models/Notification.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { buildAndStoreCertificate } from './certificateController.js';
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ router.post('/:id/submit', protect, async (req, res) => {
     if (!quiz) return res.status(404).json({ success: false, message: 'Quiz not found' });
 
     // Check max attempts
-    const enrollment = await Enrollment.findOne({ user: req.user.id, course: quiz.course });
+    const enrollment = await Enrollment.findOne({ user: req.user.id, course: quiz.course }).populate('course');
     if (enrollment) {
       const existingScore = enrollment.progress.quizScores.find(
         qs => qs.quiz.toString() === quiz._id.toString()
@@ -129,15 +130,31 @@ router.post('/:id/submit', protect, async (req, res) => {
 
       // Final quiz certification
       if (quiz.isFinal && passed && !enrollment.certificateId) {
-        enrollment.certificateId = `CERT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
         enrollment.completedAt = new Date();
         enrollment.status = 'completed';
+
+        try {
+          const cert = await buildAndStoreCertificate({
+            userId: req.user.id,
+            userEmail: req.user.email,
+            userName: req.user.name,
+            courseRef: enrollment.course,
+            courseType: 'course',
+            courseId: enrollment.course._id,
+            enrollmentId: enrollment._id,
+            completionDate: enrollment.completedAt,
+            templateId: null, // use default template
+          });
+          enrollment.certificateId = cert.certificateId;
+        } catch (certError) {
+          console.error('Failed to auto-generate certificate on quiz completion:', certError);
+        }
 
         await Notification.create({
           user: req.user.id,
           type: 'system',
           message: `Congratulations! You passed the final exam for "${quiz.title}" and earned your certificate!`,
-          link: `/certificate/${enrollment.certificateId}`,
+          link: `/certificate/${enrollment.certificateId || ''}`,
         });
       }
 

@@ -2,12 +2,12 @@ import Certificate from '../models/Certificate.js';
 import Receipt from '../models/Receipt.js';
 import Enrollment from '../models/Enrollment.js';
 import Counter from '../models/Counter.js';
+import CertificateTemplate from '../models/CertificateTemplate.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import { v2 as cloudinary } from 'cloudinary';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const sanitizePdfFilename = (value, fallback) => {
   const safeValue = String(value || fallback || 'document')
@@ -37,69 +37,110 @@ const mapReceiptDocument = (receipt) => {
   return { ...data, ...buildReceiptLinks(data.receiptId) };
 };
 
-import { v2 as cloudinary } from 'cloudinary';
-
 const getPublicIdFromUrl = (url) => {
   const parts = url.split('/upload/');
   if (parts.length !== 2) return null;
-  let path = parts[1];
-  if (path.match(/^v\d+\//)) {
-    path = path.replace(/^v\d+\//, '');
-  }
+  let path = parts[1].replace(/^v\d+\//, '');
   const dotIndex = path.lastIndexOf('.');
-  if (dotIndex !== -1) {
-    path = path.substring(0, dotIndex);
-  }
+  if (dotIndex !== -1) path = path.substring(0, dotIndex);
   return path;
 };
 
-/**
- * Fetch a PDF from Cloudinary and stream it to the client.
- *
- * NOTE: Cloudinary Free Tier blocks public delivery of PDFs by default 
- * ("Strict delivery of PDF and ZIP files"). To bypass the 401 Unauthorized error,
- * we extract the public_id and generate a signed private_download_url.
- */
 const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
-  if (!fileUrl) {
-    throw new Error('No file URL stored for this document');
-  }
+  if (!fileUrl) throw new Error('No file URL stored for this document');
 
   let fetchUrl = fileUrl;
   try {
     const publicId = getPublicIdFromUrl(fileUrl);
     if (publicId) {
-      fetchUrl = cloudinary.utils.private_download_url(
-        publicId,
-        'pdf',
-        { resource_type: 'image', type: 'upload' }
-      );
+      fetchUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
+        resource_type: 'image', type: 'upload',
+      });
     }
   } catch (err) {
-    console.error('Failed to generate signed download URL, falling back:', err);
+    console.error('Failed to generate signed URL, falling back:', err);
   }
 
   const response = await fetch(fetchUrl);
-
   if (!response.ok) {
-    throw new Error(
-      `Cloudinary returned ${response.status} for PDF asset. ` +
-      `Check that the file was uploaded successfully and is not blocked by strict delivery policies.`
-    );
+    throw new Error(`Cloudinary returned ${response.status} for PDF asset`);
   }
 
   const pdfBuffer = Buffer.from(await response.arrayBuffer());
-  const safeFilename = sanitizePdfFilename(filename, 'document.pdf');
-
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Length', String(pdfBuffer.length));
-  res.setHeader(
-    'Content-Disposition',
-    `${disposition}; filename="${safeFilename}"`
-  );
-  // Allow browser to cache the PDF for 1 hour (reduces Cloudinary bandwidth)
+  res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizePdfFilename(filename, 'document.pdf')}"`);
   res.setHeader('Cache-Control', 'private, max-age=3600');
   res.status(200).send(pdfBuffer);
+};
+
+// ─── Template Resolution ──────────────────────────────────────────────────────
+
+/**
+ * Resolve which CertificateTemplate to use.
+ * Priority: explicit templateId → default active template → null (legacy)
+ */
+export const resolveTemplate = async (templateId = null) => {
+  if (templateId) {
+    const t = await CertificateTemplate.findById(templateId);
+    if (t && t.isActive) return t;
+  }
+  // Fall back to default template
+  const def = await CertificateTemplate.findOne({ isDefault: true, isActive: true });
+  return def || null;
+};
+
+// ─── Certificate Generation Core ─────────────────────────────────────────────
+
+export const buildAndStoreCertificate = async ({
+  userId, userEmail, userName, courseRef, courseType, courseId,
+  enrollmentId, completionDate, templateId, certificateType,
+}) => {
+  const serialNumber = await Counter.getNextSequence('certificates');
+  const paddedSerial = String(serialNumber).padStart(4, '0');
+  const currentYear  = new Date().getFullYear();
+  const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
+
+  const template = await resolveTemplate(templateId);
+
+  const pdfData = {
+    studentName: userName,
+    courseName: courseRef.title,
+    domain: courseRef.category || 'Professional Development',
+    areaOfExpertise: 'Specialized Training',
+    completionDate: completionDate || new Date(),
+    certificateId,
+    serialNumber,
+    instructorName: courseRef.instructorName || '',
+  };
+
+  const pdfBuffer = await generateCertificatePDF(pdfData, template);
+  const fileUrl   = await uploadPdfToCloudinary(
+    pdfBuffer,
+    `${certificateId}-${userId}`,
+    'fwtion/certificates'
+  );
+
+  const cert = await Certificate.create({
+    certificateId,
+    user: userId,
+    [courseType]: courseId,
+    studentName: userName,
+    studentEmail: userEmail,
+    courseName: courseRef.title,
+    domain: pdfData.domain,
+    areaOfExpertise: pdfData.areaOfExpertise,
+    issueDate: new Date(),
+    completionDate: pdfData.completionDate,
+    certificateType: certificateType || 'Completion Certificate',
+    serialNumber,
+    fileUrl,
+    enrollment: enrollmentId,
+    templateId: template?._id || null,
+    templateName: template?.templateName || 'Legacy Template',
+  });
+
+  return cert;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,83 +154,42 @@ const sendCloudinaryPdf = async (res, fileUrl, { filename, disposition }) => {
  */
 export const generateCertificate = async (req, res) => {
   try {
-    const { enrollmentId } = req.body;
+    const { enrollmentId, templateId } = req.body;
 
     const enrollment = await Enrollment.findById(enrollmentId)
       .populate('course')
       .populate('liveCourse');
 
-    if (!enrollment) {
-      return res.status(404).json({ success: false, message: 'Enrollment not found' });
-    }
-
-    if (enrollment.user.toString() !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
-    if (enrollment.status !== 'completed') {
-      return res.status(400).json({ success: false, message: 'Course is not completed yet.' });
-    }
+    if (!enrollment) return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    if (enrollment.user.toString() !== req.user.id) return res.status(403).json({ success: false, message: 'Not authorized' });
+    if (enrollment.status !== 'completed') return res.status(400).json({ success: false, message: 'Course is not completed yet.' });
 
     const courseType = enrollment.course ? 'course' : 'liveCourse';
-    const courseId = enrollment[courseType]._id;
+    const courseId   = enrollment[courseType]._id;
 
-    const existingCert = await Certificate.findOne({
-      user: req.user.id,
-      [courseType]: courseId,
-    });
-
+    const existingCert = await Certificate.findOne({ user: req.user.id, [courseType]: courseId });
     if (existingCert) {
       return res.status(400).json({
-        success: false,
-        message: 'Certificate already generated',
-        data: mapCertificateDocument(existingCert),
+        success: false, message: 'Certificate already generated', data: mapCertificateDocument(existingCert),
       });
     }
 
-    const courseRef = enrollment[courseType];
-    const serialNumber = await Counter.getNextSequence('certificates');
-    const paddedSerial = String(serialNumber).padStart(4, '0');
-    const currentYear = new Date().getFullYear();
-    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
-
-    const pdfData = {
-      studentName: req.user.name,
-      courseName: courseRef.title,
-      domain: courseRef.category || 'Professional Development',
-      areaOfExpertise: 'Specialized Training',
+    const cert = await buildAndStoreCertificate({
+      userId: req.user.id,
+      userEmail: req.user.email,
+      userName: req.user.name,
+      courseRef: enrollment[courseType],
+      courseType,
+      courseId,
+      enrollmentId: enrollment._id,
       completionDate: enrollment.completedAt || new Date(),
-      certificateId,
-      serialNumber,
-    };
-
-    const pdfBuffer = await generateCertificatePDF(pdfData);
-    const fileUrl = await uploadPdfToCloudinary(
-      pdfBuffer,
-      `${certificateId}-${req.user.id}`,
-      'fwtion/certificates'
-    );
-
-    const certificate = await Certificate.create({
-      certificateId,
-      user: req.user.id,
-      [courseType]: courseId,
-      studentName: req.user.name,
-      studentEmail: req.user.email,
-      courseName: courseRef.title,
-      domain: pdfData.domain,
-      areaOfExpertise: pdfData.areaOfExpertise,
-      issueDate: new Date(),
-      completionDate: pdfData.completionDate,
-      serialNumber,
-      fileUrl,
-      enrollment: enrollment._id,
+      templateId,
     });
 
-    enrollment.certificateId = certificate.certificateId;
+    enrollment.certificateId = cert.certificateId;
     await enrollment.save({ validateBeforeSave: false });
 
-    res.status(201).json({ success: true, data: mapCertificateDocument(certificate) });
+    res.status(201).json({ success: true, data: mapCertificateDocument(cert) });
   } catch (error) {
     console.error('Certificate generation error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate certificate' });
@@ -256,9 +256,7 @@ export const getCertificateById = async (req, res) => {
       .populate('course', 'title thumbnail category')
       .populate('liveCourse', 'title thumbnail category');
 
-    if (!certificate) {
-      return res.status(404).json({ success: false, message: 'Certificate not found' });
-    }
+    if (!certificate) return res.status(404).json({ success: false, message: 'Certificate not found' });
 
     res.status(200).json({ success: true, data: mapCertificateDocument(certificate) });
   } catch (error) {
@@ -268,18 +266,15 @@ export const getCertificateById = async (req, res) => {
 
 /**
  * @desc    View or download a certificate PDF
- * @route   GET /api/certificates/:certificateId/view
- * @route   GET /api/certificates/:certificateId/download
- * @access  Public (certificates are shareable)
+ * @route   GET /api/certificates/:certificateId/view|download
+ * @access  Public
  */
 export const serveCertificatePDF = async (req, res) => {
   try {
     const certificate = await Certificate.findOne({ certificateId: req.params.certificateId })
       .select('certificateId fileUrl');
 
-    if (!certificate) {
-      return res.status(404).json({ success: false, message: 'Certificate not found' });
-    }
+    if (!certificate) return res.status(404).json({ success: false, message: 'Certificate not found' });
 
     const disposition = req.path.endsWith('/download') ? 'attachment' : 'inline';
     await sendCloudinaryPdf(res, certificate.fileUrl, {
@@ -292,15 +287,46 @@ export const serveCertificatePDF = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT RECEIPTS
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * @desc    Get all receipts for the logged-in student
- * @route   GET /api/receipts/my
- * @access  Private
+ * @desc    Public certificate verification endpoint
+ * @route   GET /api/verify-certificate/:id
+ * @access  Public
  */
+export const verifyCertificate = async (req, res) => {
+  try {
+    const cert = await Certificate.findOne({
+      certificateId: req.params.id,
+      status: 'Issued',
+    })
+      .populate('user', 'name')
+      .populate('course', 'title')
+      .populate('liveCourse', 'title');
+
+    if (!cert) {
+      return res.status(404).json({ success: false, valid: false, message: 'Certificate not found or has been revoked' });
+    }
+
+    res.json({
+      success: true,
+      valid: true,
+      data: {
+        certificateId: cert.certificateId,
+        studentName: cert.studentName,
+        courseName: cert.courseName,
+        issueDate: cert.issueDate,
+        completionDate: cert.completionDate,
+        type: cert.type,
+        certificateType: cert.certificateType,
+        templateName: cert.templateName,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── STUDENT RECEIPTS ─────────────────────────────────────────────────────────
+
 export const getMyReceipts = async (req, res) => {
   try {
     const receipts = await Receipt.find({ user: req.user.id })
@@ -318,25 +344,13 @@ export const getMyReceipts = async (req, res) => {
   }
 };
 
-/**
- * @desc    View or download a receipt PDF
- * @route   GET /api/receipts/:receiptId/view
- * @route   GET /api/receipts/:receiptId/download
- * @access  Private (owner or admin)
- *
- * NOTE: receiptId uses dashes only (e.g. FWT-iZON-RECEIPT-2024-25-01).
- *       Never use slashes in IDs — they break Express URL param parsing.
- */
 export const serveReceiptPDF = async (req, res) => {
   try {
     const receipt = await Receipt.findOne({ receiptId: req.params.receiptId })
       .select('receiptId fileUrl user');
 
-    if (!receipt) {
-      return res.status(404).json({ success: false, message: 'Receipt not found' });
-    }
+    if (!receipt) return res.status(404).json({ success: false, message: 'Receipt not found' });
 
-    // Must be the owner OR an admin
     if (!req.user || (receipt.user.toString() !== req.user.id && req.user.role !== 'admin')) {
       return res.status(403).json({ success: false, message: 'Not authorized to view this receipt' });
     }

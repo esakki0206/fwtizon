@@ -11,6 +11,7 @@ import {
   FiSettings,
   FiMessageSquare,
   FiTag,
+  FiLayers,
 } from 'react-icons/fi';
 
 /**
@@ -25,7 +26,8 @@ export const ADMIN_NAV_LINKS = [
   { name: 'Students', path: '/admin/students', icon: <FiUsers size={16} /> },
   { name: 'Quizzes', path: '/admin/quizzes', icon: <FiFileText size={16} /> },
   { name: 'Assignments', path: '/admin/assignments', icon: <FiFileText size={16} /> },
-  { name: 'Certifications and Receipt', path: '/admin/certificates', icon: <FiAward size={16} /> },
+  { name: 'Certifications & Receipts', path: '/admin/certificates', icon: <FiAward size={16} /> },
+  { name: 'Cert Templates', path: '/admin/cert-templates', icon: <FiLayers size={16} /> },
   { name: 'Payments', path: '/admin/payments', icon: <FiDollarSign size={16} /> },
   { name: 'Coupons', path: '/admin/coupons', icon: <FiTag size={16} /> },
   { name: 'Live Enrollments', path: '/admin/enrollments', icon: <FiUsers size={16} /> },

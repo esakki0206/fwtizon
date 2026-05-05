@@ -16,6 +16,8 @@ import Receipt from '../models/Receipt.js';
 import Counter from '../models/Counter.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import CertificateTemplate from '../models/CertificateTemplate.js';
+import { buildAndStoreCertificate, resolveTemplate } from './certificateController.js';
 import { sanitizeLiveCoursePayload } from '../utils/liveCoursePayload.js';
 import { protect, authorize } from '../middleware/auth.js';
 import sendEmail from '../utils/sendEmail.js';
@@ -404,6 +406,7 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
 
     // ── Most active users ──
     const mostActiveUsers = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] } } },
       { $group: { _id: '$user', enrollmentCount: { $sum: 1 } } },
       { $sort: { enrollmentCount: -1 } },
       { $limit: 5 },
@@ -429,7 +432,7 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
 
     // ── Most popular courses ──
     const mostPopularCourses = await Enrollment.aggregate([
-      { $match: { course: { $exists: true, $ne: null } } },
+      { $match: { course: { $exists: true, $ne: null }, status: { $in: ['active', 'completed'] } } },
       { $group: { _id: '$course', enrollmentCount: { $sum: 1 }, revenue: { $sum: '$amount' } } },
       { $sort: { enrollmentCount: -1 } },
       { $limit: 5 },
@@ -851,6 +854,7 @@ router.get('/students/export', protect, authorize('admin'), async (req, res) => 
       .lean();
 
     const enrollmentCounts = await Enrollment.aggregate([
+      { $match: { status: { $in: ['active', 'completed'] } } },
       { $group: { _id: '$user', count: { $sum: 1 } } },
     ]);
     const enrollMap = new Map(enrollmentCounts.map((e) => [String(e._id), e.count]));
@@ -1261,51 +1265,33 @@ router.get('/cohorts/:cohortId/students', protect, authorize('admin'), async (re
 
 router.post('/generate-cohort-certificate', protect, authorize('admin'), async (req, res) => {
   try {
-    const { userId, cohortId } = req.body;
+    const { userId, cohortId, certificateType, templateId } = req.body;
     if (!userId || !cohortId) return res.status(400).json({ success: false, message: 'userId and cohortId are required' });
+
+    const validCertTypes = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
+    const selectedCertType = validCertTypes.includes(certificateType) ? certificateType : 'Completion Certificate';
 
     const enrollment = await Enrollment.findOne({ user: userId, liveCourse: cohortId }).populate('user liveCourse');
     if (!enrollment) return res.status(404).json({ success: false, message: 'Valid cohort enrollment not found' });
-    
-    // Duplicate check
+
     let cert = await Certificate.findOne({ user: userId, liveCourse: cohortId, type: 'COHORT' });
     if (cert) return res.status(200).json({ success: true, message: 'Certificate already exists', data: cert });
 
-    const serialNumber = await Counter.getNextSequence('certificates');
-    const paddedSerial = String(serialNumber).padStart(4, '0');
-    const currentYear = new Date().getFullYear();
-    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
-
-    const pdfData = {
-      studentName: enrollment.user.name,
-      courseName: enrollment.liveCourse.title,
-      domain: enrollment.liveCourse.category || 'Specialized Training',
-      areaOfExpertise: 'Live Cohort Program',
+    cert = await buildAndStoreCertificate({
+      userId,
+      userEmail: enrollment.user.email,
+      userName: enrollment.user.name,
+      courseRef: enrollment.liveCourse,
+      courseType: 'liveCourse',
+      courseId: cohortId,
+      enrollmentId: enrollment._id,
       completionDate: enrollment.liveCourse.endDate || new Date(),
-      certificateId,
-      serialNumber,
-      type: 'COHORT' // Triggers dynamic string in PDF gen
-    };
-
-    const pdfBuffer = await generateCertificatePDF(pdfData);
-    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${userId}-cohort`, 'fwtion/certificates');
-
-    cert = await Certificate.create({
-      certificateId,
-      user: userId,
-      liveCourse: cohortId,
-      type: 'COHORT',
-      studentName: enrollment.user.name,
-      studentEmail: enrollment.user.email,
-      courseName: enrollment.liveCourse.title,
-      domain: pdfData.domain,
-      areaOfExpertise: pdfData.areaOfExpertise,
-      issueDate: new Date(),
-      completionDate: pdfData.completionDate,
-      serialNumber,
-      fileUrl,
-      enrollment: enrollment._id
+      templateId,
     });
+
+    cert.type = 'COHORT';
+    cert.certificateType = selectedCertType;
+    await cert.save();
 
     res.status(201).json({ success: true, data: cert });
   } catch (error) {
@@ -1339,58 +1325,38 @@ router.get('/courses/:courseId/enrolled-students', protect, authorize('admin'), 
 
 router.post('/generate-certificate', protect, authorize('admin'), async (req, res) => {
   try {
-    const { userId, courseId } = req.body;
+    const { userId, courseId, certificateType, templateId } = req.body;
     if (!userId || !courseId) return res.status(400).json({ success: false, message: 'userId and courseId are required' });
 
-    // Validate enrollment
+    const validCertTypes = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
+    const selectedCertType = validCertTypes.includes(certificateType) ? certificateType : 'Completion Certificate';
+
     const enrollment = await Enrollment.findOne({ user: userId, course: courseId }).populate('user course');
     if (!enrollment) return res.status(404).json({ success: false, message: 'Valid enrollment not found' });
-    
-    // Check completion status
     if (enrollment.status !== 'completed' && enrollment.progress?.percentComplete < 100) {
       return res.status(400).json({ success: false, message: 'Course is not COMPLETED by this student' });
     }
 
-    // Duplicate check
     let cert = await Certificate.findOne({ user: userId, course: courseId });
     if (cert) return res.status(200).json({ success: true, message: 'Certificate already exists', data: cert });
 
-    const serialNumber = await Counter.getNextSequence('certificates');
-    const paddedSerial = String(serialNumber).padStart(4, '0');
-    const currentYear = new Date().getFullYear();
-    const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
-
-    const pdfData = {
-      studentName: enrollment.user.name,
-      courseName: enrollment.course.title,
-      domain: enrollment.course.category || 'Professional Development',
-      areaOfExpertise: 'Specialized Training',
+    cert = await buildAndStoreCertificate({
+      userId,
+      userEmail: enrollment.user.email,
+      userName: enrollment.user.name,
+      courseRef: enrollment.course,
+      courseType: 'course',
+      courseId,
+      enrollmentId: enrollment._id,
       completionDate: enrollment.completedAt || new Date(),
-      certificateId,
-      serialNumber
-    };
-
-    const pdfBuffer = await generateCertificatePDF(pdfData);
-    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${certificateId}-${userId}`, 'fwtion/certificates');
-
-    cert = await Certificate.create({
-      certificateId,
-      user: userId,
-      course: courseId,
-      studentName: enrollment.user.name,
-      studentEmail: enrollment.user.email,
-      courseName: enrollment.course.title,
-      domain: pdfData.domain,
-      areaOfExpertise: pdfData.areaOfExpertise,
-      issueDate: new Date(),
-      completionDate: pdfData.completionDate,
-      serialNumber,
-      fileUrl,
-      enrollment: enrollment._id
+      templateId,
     });
 
+    cert.certificateType = selectedCertType;
+    await cert.save();
+
     enrollment.certificateId = cert.certificateId;
-    if(enrollment.status !== 'completed'){
+    if (enrollment.status !== 'completed') {
       enrollment.status = 'completed';
       enrollment.completedAt = new Date();
       enrollment.progress.percentComplete = 100;
@@ -1400,6 +1366,59 @@ router.post('/generate-certificate', protect, authorize('admin'), async (req, re
     res.status(201).json({ success: true, data: cert });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// SYNC ENROLLMENT COUNTS
+// ==============================
+
+/**
+ * @desc    Recalculate cached enrollment counts from actual enrollment records
+ * @route   POST /api/admin/sync-enrollment-counts
+ * @access  Private/Admin
+ */
+router.post('/sync-enrollment-counts', protect, authorize('admin'), async (req, res) => {
+  try {
+    // Sync LiveCourse.currentEnrollments
+    const liveCourses = await LiveCourse.find().select('_id currentEnrollments');
+    let liveFixed = 0;
+    for (const lc of liveCourses) {
+      const actualCount = await Enrollment.countDocuments({
+        liveCourse: lc._id,
+        status: { $in: ['active', 'completed'] }
+      });
+      if (lc.currentEnrollments !== actualCount) {
+        lc.currentEnrollments = actualCount;
+        await lc.save({ validateBeforeSave: false });
+        liveFixed++;
+      }
+    }
+
+    // Sync Course.enrollmentCount
+    const Course = mongoose.model('Course');
+    const courses = await Course.find().select('_id enrollmentCount');
+    let courseFixed = 0;
+    for (const c of courses) {
+      const actualCount = await Enrollment.countDocuments({
+        course: c._id,
+        status: { $in: ['active', 'completed'] }
+      });
+      if (c.enrollmentCount !== actualCount) {
+        c.enrollmentCount = actualCount;
+        await c.save({ validateBeforeSave: false });
+        courseFixed++;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Enrollment counts synced. Fixed ${liveFixed} live courses and ${courseFixed} normal courses.`,
+      data: { liveCoursesFixed: liveFixed, coursesFixed: courseFixed }
+    });
+  } catch (error) {
+    console.error('Sync enrollment counts error:', error);
+    res.status(500).json({ success: false, message: 'Failed to sync enrollment counts' });
   }
 });
 
@@ -1529,13 +1548,15 @@ router.post('/certificates/regenerate/:id', protect, authorize('admin'), async (
   try {
     const cert = await Certificate.findById(req.params.id)
       .populate('user', 'name _id')
-      .populate('course', 'title category')
-      .populate('liveCourse', 'title category');
+      .populate('course', 'title category instructorName')
+      .populate('liveCourse', 'title category instructorName');
       
     if (!cert) return res.status(404).json({ success: false, message: 'Certificate not found' });
     
-    // Admin might want to update the certificate with the new design
     const courseRef = cert.course || cert.liveCourse;
+    const templateId = req.body.templateId || cert.templateId;
+    const template = await resolveTemplate(templateId);
+
     const pdfData = {
       studentName: req.body.studentName || cert.studentName,
       courseName: req.body.courseName || cert.courseName,
@@ -1543,17 +1564,22 @@ router.post('/certificates/regenerate/:id', protect, authorize('admin'), async (
       areaOfExpertise: req.body.areaOfExpertise || cert.areaOfExpertise || 'Specialized Training',
       completionDate: req.body.completionDate || cert.completionDate || cert.issueDate,
       certificateId: cert.certificateId,
-      serialNumber: cert.serialNumber || parseInt(cert.certificateId.split('-').pop(), 10) || 1
+      serialNumber: cert.serialNumber || parseInt(cert.certificateId.split('-').pop(), 10) || 1,
+      instructorName: courseRef?.instructorName || '',
     };
 
-    const pdfBuffer = await generateCertificatePDF(pdfData);
-    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${cert.certificateId}-${cert.user._id}-v2`, 'fwtion/certificates');
+    const pdfBuffer = await generateCertificatePDF(pdfData, template);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, `${cert.certificateId}-${cert.user._id}-v${Date.now()}`, 'fwtion/certificates');
     
     cert.fileUrl = fileUrl;
     cert.studentName = pdfData.studentName;
     cert.courseName = pdfData.courseName;
     cert.domain = pdfData.domain;
     cert.areaOfExpertise = pdfData.areaOfExpertise;
+    if (template) {
+      cert.templateId = template._id;
+      cert.templateName = template.templateName;
+    }
     
     await cert.save();
     res.status(200).json({ success: true, data: cert });
@@ -1681,7 +1707,7 @@ router.delete('/live-courses/:id', protect, authorize('admin', 'instructor'), as
 import CohortApplication from '../models/CohortApplication.js';
 router.get('/live-courses/:id/applications', protect, authorize('admin'), async (req, res) => {
   try {
-    const applications = await CohortApplication.find({ liveCourse: req.params.id })
+    const applications = await CohortApplication.find({ liveCourse: req.params.id, status: 'Enrolled' })
       .populate('user', 'name avatar email')
       .sort('-createdAt');
     res.status(200).json({ success: true, count: applications.length, data: applications });
@@ -1709,7 +1735,7 @@ router.get('/live-courses/:id/applications/export', protect, authorize('admin'),
     }
 
     // Fetch all applications for this cohort
-    const applications = await CohortApplication.find({ liveCourse: id })
+    const applications = await CohortApplication.find({ liveCourse: id, status: 'Enrolled' })
       .populate('user', 'name email')
       .sort('-createdAt')
       .lean();

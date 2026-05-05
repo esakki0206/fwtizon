@@ -23,6 +23,7 @@ const LiveCourseManager = lazy(() => import('./pages/admin/LiveCourseManager'));
 const UserManager = lazy(() => import('./pages/admin/UserManager'));
 const QuizManager = lazy(() => import('./pages/admin/QuizManager'));
 const CertificateManager = lazy(() => import('./pages/admin/CertificateManager'));
+const CertificateTemplate = lazy(() => import('./pages/admin/CertificateTemplate'));
 const PaymentManager = lazy(() => import('./pages/admin/PaymentManager'));
 const EnrollmentManager = lazy(() => import('./pages/admin/EnrollmentManager'));
 const Announcements = lazy(() => import('./pages/admin/Announcements'));
@@ -85,6 +86,7 @@ function App() {
               <Route path="quizzes" element={<QuizManager />} />
               <Route path="assignments" element={<AssignmentManager />} />
               <Route path="certificates" element={<CertificateManager />} />
+              <Route path="cert-templates" element={<CertificateTemplate />} />
               <Route path="payments" element={<PaymentManager />} />
               <Route path="enrollments" element={<EnrollmentManager />} />
               <Route path="announcements" element={<Announcements />} />

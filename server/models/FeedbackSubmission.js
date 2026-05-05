@@ -44,6 +44,12 @@ const feedbackSubmissionSchema = new mongoose.Schema({
       message: 'At least one response is required',
     },
   },
+  selectedCertificateType: {
+    type: String,
+    enum: ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'],
+    required: [true, 'Certificate type selection is required'],
+    default: 'Completion Certificate',
+  },
   submittedAt: {
     type: Date,
     default: Date.now,

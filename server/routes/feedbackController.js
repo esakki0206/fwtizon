@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 import { buildFeedbackInsights } from '../utils/feedbackInsights.js';
 import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
+import { buildAndStoreCertificate } from './certificateController.js';
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -64,9 +65,11 @@ export const isFormUnlocked = (form, courseObj) => {
 // ADMIN: Feedback Form CRUD
 // ==============================
 
+const VALID_CERTIFICATE_TYPES = ['Completion Certificate', 'Participation Certificate', 'Excellence Certificate'];
+
 export const createFeedbackForm = async (req, res) => {
   try {
-    const { liveCourseId, courseId, title, instructions, questions, unlockDate, submissionDeadline } = req.body;
+    const { liveCourseId, courseId, title, instructions, questions, unlockDate, submissionDeadline, availableCertificateTypes } = req.body;
 
     if ((!liveCourseId && !courseId) || !title || !questions || !questions.length) {
       return res.status(400).json({ success: false, message: 'Course ID, title, and at least one question are required' });
@@ -95,12 +98,23 @@ export const createFeedbackForm = async (req, res) => {
       }
     }
 
+    // Validate certificate types
+    let certTypes = ['Completion Certificate'];
+    if (Array.isArray(availableCertificateTypes) && availableCertificateTypes.length > 0) {
+      const validTypes = availableCertificateTypes.filter(t => VALID_CERTIFICATE_TYPES.includes(t));
+      if (validTypes.length === 0) {
+        return res.status(400).json({ success: false, message: 'At least one valid certificate type is required' });
+      }
+      certTypes = validTypes;
+    }
+
     const formPayload = {
       title: title.trim(),
       instructions: instructions?.trim() || '',
       questions,
       unlockDate: unlockDate || null,
       submissionDeadline: submissionDeadline || null,
+      availableCertificateTypes: certTypes,
       createdBy: req.user.id,
     };
 
@@ -131,7 +145,7 @@ export const updateFeedbackForm = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Feedback form not found' });
     }
 
-    const { title, instructions, questions, unlockDate, submissionDeadline, isActive } = req.body;
+    const { title, instructions, questions, unlockDate, submissionDeadline, isActive, availableCertificateTypes } = req.body;
 
     if (title !== undefined) form.title = title.trim();
     if (instructions !== undefined) form.instructions = instructions.trim();
@@ -152,6 +166,15 @@ export const updateFeedbackForm = async (req, res) => {
     if (unlockDate !== undefined) form.unlockDate = unlockDate || null;
     if (submissionDeadline !== undefined) form.submissionDeadline = submissionDeadline || null;
     if (isActive !== undefined) form.isActive = isActive;
+    if (availableCertificateTypes !== undefined) {
+      const validTypes = Array.isArray(availableCertificateTypes)
+        ? availableCertificateTypes.filter(t => VALID_CERTIFICATE_TYPES.includes(t))
+        : [];
+      if (validTypes.length === 0) {
+        return res.status(400).json({ success: false, message: 'At least one valid certificate type is required' });
+      }
+      form.availableCertificateTypes = validTypes;
+    }
 
     await form.save();
     res.status(200).json({ success: true, data: form });
@@ -677,7 +700,7 @@ export const getFeedbackForm = async (req, res) => {
       });
     }
 
-    // Return full form with questions
+    // Return full form with questions and available certificate types
     res.status(200).json({
       success: true,
       data: {
@@ -685,6 +708,7 @@ export const getFeedbackForm = async (req, res) => {
         title: form.title,
         instructions: form.instructions,
         questions: form.questions,
+        availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
         course: { _id: courseObj._id, title: courseObj.title, status: courseObj.status },
         isUnlocked: true,
         isSubmitted: false,
@@ -705,7 +729,7 @@ export const getFeedbackForm = async (req, res) => {
 export const submitFeedback = async (req, res) => {
   try {
     const { formId } = req.params;
-    const { responses } = req.body;
+    const { responses, certificateType } = req.body;
 
     if (!isValidObjectId(formId)) {
       return res.status(400).json({ success: false, message: 'Invalid form ID' });
@@ -713,6 +737,11 @@ export const submitFeedback = async (req, res) => {
 
     if (!responses || !Array.isArray(responses) || !responses.length) {
       return res.status(400).json({ success: false, message: 'Responses are required' });
+    }
+
+    // Validate certificate type is provided (mandatory)
+    if (!certificateType || typeof certificateType !== 'string' || !certificateType.trim()) {
+      return res.status(400).json({ success: false, message: 'Certificate type selection is required' });
     }
 
     // Get the form
@@ -750,6 +779,15 @@ export const submitFeedback = async (req, res) => {
     const existingSub = await FeedbackSubmission.findOne({ feedbackForm: formId, user: req.user.id });
     if (existingSub) {
       return res.status(400).json({ success: false, message: 'You have already submitted feedback for this course' });
+    }
+
+    // Validate certificate type against the form's allowed types
+    const allowedTypes = form.availableCertificateTypes || ['Completion Certificate'];
+    if (!allowedTypes.includes(certificateType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid certificate type. Allowed types: ${allowedTypes.join(', ')}`,
+      });
     }
 
     // Validate required questions are answered
@@ -790,6 +828,7 @@ export const submitFeedback = async (req, res) => {
       user: req.user.id,
       enrollment: enrollment._id,
       responses,
+      selectedCertificateType: certificateType,
     };
     if (liveCourse) submissionPayload.liveCourse = liveCourse._id;
     if (course) submissionPayload.course = course._id;
@@ -806,47 +845,18 @@ export const submitFeedback = async (req, res) => {
       });
 
       if (!existingCert) {
-        const serialNumber = await Counter.getNextSequence('certificates');
-        const paddedSerial = String(serialNumber).padStart(4, '0');
-        const currentYear = new Date().getFullYear();
-        const certificateId = `FWT-IZON-${currentYear}-${paddedSerial}`;
-
-        const pdfData = {
-          studentName: req.user.name,
-          courseName: courseObj.title,
-          domain: courseObj.domain || courseObj.category || 'Professional Development',
-          areaOfExpertise: courseObj.areaOfExpertise || 'Specialized Training',
+        const cert = await buildAndStoreCertificate({
+          userId: req.user.id,
+          userEmail: req.user.email,
+          userName: req.user.name,
+          courseRef: courseObj,
+          courseType: liveCourse ? 'liveCourse' : 'course',
+          courseId: courseObj._id,
+          enrollmentId: enrollment._id,
           completionDate: new Date(),
-          certificateId,
-          serialNumber,
-        };
-
-        const pdfBuffer = await generateCertificatePDF(pdfData);
-        const fileUrl = await uploadPdfToCloudinary(
-          pdfBuffer,
-          `${certificateId}-${req.user.id}`,
-          'fwtion/certificates'
-        );
-
-        const certPayload = {
-          certificateId,
-          user: req.user.id,
-          studentName: req.user.name,
-          studentEmail: req.user.email,
-          courseName: courseObj.title,
-          domain: pdfData.domain,
-          areaOfExpertise: pdfData.areaOfExpertise,
-          issueDate: new Date(),
-          completionDate: pdfData.completionDate,
-          serialNumber,
-          fileUrl,
-          enrollment: enrollment._id,
-          type: liveCourse ? 'COHORT' : 'NORMAL',
-        };
-        if (liveCourse) certPayload.liveCourse = liveCourse._id;
-        if (course) certPayload.course = course._id;
-
-        const cert = await Certificate.create(certPayload);
+          templateId: null, // Use default template
+          certificateType,
+        });
 
         // Update enrollment
         enrollment.certificateId = cert.certificateId;
@@ -949,7 +959,7 @@ export const getFeedbackStatus = async (req, res) => {
     const cert = await Certificate.findOne({ 
       user: req.user.id, 
       $or: [{ liveCourse: courseObjectId }, { course: courseObjectId }] 
-    }).select('certificateId');
+    }).select('certificateId certificateType');
 
     res.status(200).json({
       success: true,
@@ -961,8 +971,10 @@ export const getFeedbackStatus = async (req, res) => {
         isUnlocked: unlocked,
         isSubmitted: !!submission,
         submittedAt: submission?.submittedAt || null,
+        availableCertificateTypes: form.availableCertificateTypes || ['Completion Certificate'],
         certificate: cert ? {
           certificateId: cert.certificateId,
+          certificateType: cert.certificateType || 'Completion Certificate',
           downloadUrl: `/api/certificates/${cert.certificateId}/download`,
           viewUrl: `/api/certificates/${cert.certificateId}/view`,
         } : null,

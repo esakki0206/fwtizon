@@ -101,7 +101,7 @@ const CourseManager = () => {
   const handleEdit = async (course) => {
     setEditingCourse(course._id);
     setErrors({});
-    
+
     // Set initial basic data immediately for UI responsiveness
     setFormData({
       title: course.title || '',
@@ -115,9 +115,9 @@ const CourseManager = () => {
       modules: [], // Will be populated shortly
       linkedLiveCourseId: course.linkedLiveCourseId || '',
     });
-    
+
     setView('editor');
-    
+
     // Fetch full course data including lessons
     try {
       const res = await axios.get(`/api/admin/courses/${course._id}/full`);
@@ -181,7 +181,7 @@ const CourseManager = () => {
         `"${new Date(app.createdAt).toISOString()}"`
       ]);
       const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      
+
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -264,7 +264,7 @@ const CourseManager = () => {
     }));
 
   const removeModule = (mIdx) => {
-    if(!window.confirm('Remove this module and all its lessons?')) return;
+    if (!window.confirm('Remove this module and all its lessons?')) return;
     setFormData(prev => ({
       ...prev,
       modules: prev.modules.filter((_, i) => i !== mIdx),
@@ -274,9 +274,9 @@ const CourseManager = () => {
   const addLesson = (mIdx) =>
     setFormData(prev => {
       const updated = [...prev.modules];
-      updated[mIdx].lessons.push({ 
-        title: 'New Lesson', 
-        type: 'video', 
+      updated[mIdx].lessons.push({
+        title: 'New Lesson',
+        type: 'video',
         duration: 600,
         content: '',
         zoomEmbedLink: '',
@@ -352,11 +352,10 @@ const CourseManager = () => {
       cell: (row) => (
         <button
           onClick={(e) => handleToggleStatus(e, row._id)}
-          className={`px-2 py-1 rounded text-xs font-bold w-max transition-colors ${
-            row.status === 'published'
+          className={`px-2 py-1 rounded text-xs font-bold w-max transition-colors ${row.status === 'published'
               ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50'
               : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50'
-          }`}
+            }`}
         >
           {row.status === 'published' ? 'Published' : 'Draft'}
         </button>
@@ -514,7 +513,7 @@ const CourseManager = () => {
               {/* Curriculum Builder */}
               <div>
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Course Curriculum</h3>
-                
+
                 {formData.modules?.map((module, mIdx) => (
                   <div key={mIdx} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl mb-6 shadow-sm overflow-hidden">
                     <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
@@ -539,7 +538,7 @@ const CourseManager = () => {
                     <div className="p-4 space-y-4">
                       {module.lessons?.map((lesson, lIdx) => (
                         <div key={lIdx} className="p-4 bg-gray-50/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
-                          
+
                           {/* Lesson Header */}
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                             <div className="flex-1 flex items-center w-full">
@@ -572,7 +571,7 @@ const CourseManager = () => {
                                 <option value="text">Rich Text</option>
                               </select>
                               <Button variant="ghost" size="sm" onClick={() => {
-                                if(!window.confirm('Remove lesson?')) return;
+                                if (!window.confirm('Remove lesson?')) return;
                                 const updated = [...formData.modules];
                                 updated[mIdx].lessons = updated[mIdx].lessons.filter((_, i) => i !== lIdx);
                                 setFormData(prev => ({ ...prev, modules: updated }));
@@ -584,7 +583,7 @@ const CourseManager = () => {
 
                           {/* Lesson Content Type Specific Fields */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-800">
-                            
+
                             {(lesson.type === 'video' || lesson.type === 'external_video' || lesson.type === 'pdf') && (
                               <div className="md:col-span-2">
                                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Content URL</label>
@@ -680,7 +679,7 @@ const CourseManager = () => {
                                 Free Preview
                               </label>
                             </div>
-                            
+
                             <div>
                               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Duration (seconds)</label>
                               <input
@@ -702,7 +701,7 @@ const CourseManager = () => {
                               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Downloadable Resources</label>
                               <button type="button" onClick={() => addResource(mIdx, lIdx)} className="text-[10px] bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded text-gray-700 dark:text-gray-300 hover:bg-gray-300 font-bold">+ Add Resource</button>
                             </div>
-                            
+
                             <div className="space-y-2">
                               {lesson.resources?.map((res, rIdx) => (
                                 <div key={rIdx} className="flex gap-2 items-center">
@@ -733,7 +732,7 @@ const CourseManager = () => {
                                     updated[mIdx].lessons[lIdx].resources = updated[mIdx].lessons[lIdx].resources.filter((_, i) => i !== rIdx);
                                     setFormData(prev => ({ ...prev, modules: updated }));
                                   }} className="text-red-400 p-1">
-                                    <FiTrash2 size={12}/>
+                                    <FiTrash2 size={12} />
                                   </button>
                                 </div>
                               ))}
@@ -742,7 +741,7 @@ const CourseManager = () => {
 
                         </div>
                       ))}
-                      
+
                       <Button variant="ghost" size="sm" onClick={() => addLesson(mIdx)} className="w-full mt-2 border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
                         <FiPlus className="mr-2" /> Add Lesson
                       </Button>

@@ -23,6 +23,7 @@ const StarRating = ({ value, onChange }) => {
 
 const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess }) => {
   const [responses, setResponses] = useState({});
+  const [certificateType, setCertificateType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [errors, setErrors] = useState({});
@@ -36,6 +37,11 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
 
   const validate = () => {
     const newErrors = {};
+    
+    if (formData.availableCertificateTypes?.length > 0 && !certificateType) {
+      newErrors.certificateType = 'Please select a certificate type';
+    }
+
     formData.questions?.forEach((q, idx) => {
       if (q.required) {
         const val = responses[idx];
@@ -55,7 +61,11 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
 
     try {
       setSubmitting(true);
-      const res = await axios.post(`/api/feedback/submit/${formData._id}`, { responses: payload });
+      const payloadData = { responses: payload };
+      if (certificateType) {
+        payloadData.certificateType = certificateType;
+      }
+      const res = await axios.post(`/api/feedback/submit/${formData._id}`, payloadData);
       setResult(res.data.data);
       toast.success('Feedback submitted successfully!');
       if (onSuccess) onSuccess(res.data.data);
@@ -68,6 +78,7 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
 
   const handleClose = () => {
     setResponses({});
+    setCertificateType('');
     setErrors({});
     setResult(null);
     onClose();
@@ -156,6 +167,30 @@ const FeedbackFormModal = ({ isOpen, onClose, formData, liveCourseId, onSuccess 
                 {formData.instructions && (
                   <div className="bg-blue-50 dark:bg-blue-900/15 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
                     <p className="text-sm text-blue-700 dark:text-blue-300">{formData.instructions}</p>
+                  </div>
+                )}
+
+                {formData.availableCertificateTypes?.length > 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-900/15 rounded-xl p-5 border border-amber-200 dark:border-amber-800">
+                    <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">
+                      Select Certificate Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={certificateType}
+                      onChange={(e) => {
+                        setCertificateType(e.target.value);
+                        setErrors(prev => { const n = { ...prev }; delete n.certificateType; return n; });
+                      }}
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                    >
+                      <option value="">-- Choose Certificate Type --</option>
+                      {formData.availableCertificateTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    {errors.certificateType && (
+                      <p className="text-xs text-red-500 flex items-center mt-2"><FiAlertCircle className="mr-1" size={12} />{errors.certificateType}</p>
+                    )}
                   </div>
                 )}
 

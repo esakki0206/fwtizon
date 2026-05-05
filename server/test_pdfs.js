@@ -11,29 +11,29 @@
 
 import fs from 'fs';
 import { generateCertificatePDF } from './utils/generateCertificatePDF.js';
-import { generateReceiptPDF }     from './utils/generateReceiptPDF.js';
+import { generateReceiptPDF } from './utils/generateReceiptPDF.js';
 
 // ── Certificate test data ─────────────────────────────────────────────────────
 const certData = {
-  studentName:     'Esakki Muthu',
-  courseName:      'Full Stack Web Development',
-  domain:          'Web Development',
+  studentName: 'Esakki Muthu The Great Conqueror ',
+  courseName: 'Advanced Masterclass in Full Stack Web Development',
+  domain: 'Web Development',
   areaOfExpertise: 'MERN Stack Engineering',
-  completionDate:  new Date('2026-04-21'),
-  certificateId:   'FWT-IZON-2026-0001',
-  serialNumber:    1,
+  completionDate: new Date('2026-04-21'),
+  certificateId: 'FWT-IZON-2026-0001',
+  serialNumber: 1,
 };
 
 // ── Receipt test data ─────────────────────────────────────────────────────────
 const rcptData = {
-  receiptId:    'FWT-iZON-RECEIPT-2026/27-01',   // full formatted ID
+  receiptId: 'FWT-iZON-RECEIPT-2026/27-01',   // full formatted ID
   serialNumber: 1,                                 // OR provide serialNumber alone
-  userName:     'Esakki Muthu',
-  userEmail:    'esakki@example.com',
-  courseName:   'Full Stack Web Development',
-  amount:       4999,
-  date:         new Date('2026-04-21'),
-  status:       'SUCCESS',
+  userName: 'Esakki Muthu',
+  userEmail: 'esakki@example.com',
+  courseName: 'Full Stack Web Development',
+  amount: 4999,
+  date: new Date('2026-04-21'),
+  status: 'SUCCESS',
 };
 
 async function main() {

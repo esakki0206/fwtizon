@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { AnimatePresence } from 'framer-motion';
@@ -26,6 +26,7 @@ const LiveCourseDetail = () => {
   const [activeFaq, setActiveFaq] = useState(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Enrollment state (verified from backend, not local user object) ────────
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -157,7 +158,7 @@ const LiveCourseDetail = () => {
   const handleEnrollButton = () => {
     if (!user) {
       toast.error('Please log in to apply for this course.');
-      navigate('/login');
+      navigate('/login', { state: { from: location.pathname } });
       return;
     }
     if (isEnrolled) return; // Guard: already enrolled — button should not be clickable
@@ -347,7 +348,7 @@ const LiveCourseDetail = () => {
           >
             <FiCheckCircle className="mr-2" size={16} /> Applied &amp; Enrolled
           </button>
-          
+
           {zoomLink && !isCompleted && (
             <a
               href={zoomLink}

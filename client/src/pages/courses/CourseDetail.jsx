@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiPlay, FiBookOpen, FiClock, FiStar, FiCheck, FiLock,
@@ -25,6 +25,7 @@ const loadRazorpay = () =>
 const CourseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const [course, setCourse] = useState(null);
@@ -115,7 +116,7 @@ const CourseDetail = () => {
   const handleAutoEnroll = async () => {
     if (!user) {
       toast.error('Please log in to enroll');
-      navigate('/login');
+      navigate('/login', { state: { from: location.pathname } });
       return;
     }
     try {
@@ -135,7 +136,7 @@ const CourseDetail = () => {
   const handleEnroll = async () => {
     if (!user) {
       toast.error('Please log in to enroll');
-      navigate('/login');
+      navigate('/login', { state: { from: location.pathname } });
       return;
     }
     if (isEnrolled) {

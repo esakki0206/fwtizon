@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuth } from './context/AuthContext';
 import Layout from './components/layout/Layout';
@@ -37,17 +37,25 @@ const Profile = lazy(() => import('./pages/profile/Profile'));
 const Assignments = lazy(() => import('./pages/dashboard/Assignments'));
 const MyCertificates = lazy(() => import('./pages/dashboard/MyCertificates'));
 
+// Redirects unauthenticated users to /login and remembers where they came from
+// so Login can send them back after a successful sign-in.
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <GlobalSkeleton />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
   return children;
 };
 
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <GlobalSkeleton />;
-  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/dashboard" replace state={{ from: location.pathname + location.search }} />;
+  }
   return children;
 };
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import { motion } from 'framer-motion';
@@ -13,6 +13,12 @@ const Login = () => {
 
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Where to send the user after login:
+  // • If they were redirected here from a protected page / enroll click → go back there
+  // • Admins always go to /admin/dashboard regardless
+  const from = location.state?.from || '/dashboard';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,9 +27,9 @@ const Login = () => {
       const data = await login(email, password);
       toast.success('Successfully logged in!');
       if (data?.user?.role === 'admin') {
-        navigate('/admin/dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else {
-        navigate('/dashboard');
+        navigate(from, { replace: true });
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login failed');
@@ -38,9 +44,9 @@ const Login = () => {
       const data = await googleLogin(credentialResponse.credential);
       toast.success('Successfully logged in with Google!');
       if (data?.user?.role === 'admin') {
-        navigate('/admin/dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else {
-        navigate('/dashboard');
+        navigate(from, { replace: true });
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Google login failed');

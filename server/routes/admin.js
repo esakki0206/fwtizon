@@ -1737,11 +1737,53 @@ router.delete('/live-courses/:id', protect, authorize('admin', 'instructor'), as
 import CohortApplication from '../models/CohortApplication.js';
 router.get('/live-courses/:id/applications', protect, authorize('admin'), async (req, res) => {
   try {
-    const applications = await CohortApplication.find({ liveCourse: req.params.id, status: 'Enrolled' })
+    // Use Enrollment as the source of truth (matches the enrolled count shown in the list)
+    const enrollments = await Enrollment.find({
+      liveCourse: req.params.id,
+      status: { $in: ['active', 'completed'] }
+    })
       .populate('user', 'name avatar email')
-      .sort('-createdAt');
+      .sort('-createdAt')
+      .lean();
+
+    // Fetch supplementary CohortApplication data for extra fields
+    const cohortApps = await CohortApplication.find({ liveCourse: req.params.id }).lean();
+    const cohortMap = new Map();
+    for (const app of cohortApps) {
+      // Key by user ID (string) for reliable matching
+      if (app.user) cohortMap.set(app.user.toString(), app);
+      // Also key by email as fallback
+      if (app.email) cohortMap.set(app.email.toLowerCase(), app);
+    }
+
+    // Merge enrollment data with cohort application extras
+    const applications = enrollments.map((enr) => {
+      const userId = enr.user?._id?.toString();
+      const userEmail = (enr.email || enr.user?.email || '').toLowerCase();
+      const cohort = cohortMap.get(userId) || cohortMap.get(userEmail) || {};
+
+      return {
+        _id: enr._id,
+        user: enr.user,
+        liveCourse: enr.liveCourse,
+        fullName: cohort.fullName || enr.fullName || enr.user?.name || 'N/A',
+        email: cohort.email || enr.email || enr.user?.email || 'N/A',
+        mobileNumber: cohort.mobileNumber || enr.phone || 'N/A',
+        whatsappNumber: cohort.whatsappNumber || 'N/A',
+        gender: cohort.gender || 'N/A',
+        courseDepartment: cohort.courseDepartment || 'N/A',
+        experienceLevel: cohort.experienceLevel || 'N/A',
+        status: enr.status === 'active' || enr.status === 'completed' ? 'Enrolled' : enr.status,
+        paymentId: enr.paymentId || 'N/A',
+        enrollmentType: enr.enrollmentType || 'paid',
+        amount: enr.amount,
+        createdAt: enr.createdAt,
+      };
+    });
+
     res.status(200).json({ success: true, count: applications.length, data: applications });
   } catch (error) {
+    console.error('Fetch live course applications error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1764,18 +1806,42 @@ router.get('/live-courses/:id/applications/export', protect, authorize('admin'),
       return res.status(404).json({ success: false, message: 'Live course not found' });
     }
 
-    // Fetch all applications for this cohort
-    const applications = await CohortApplication.find({ liveCourse: id, status: 'Enrolled' })
+    // Use Enrollment as the source of truth to ensure all enrollments (including admin bypass) are exported
+    const enrollments = await Enrollment.find({
+      liveCourse: id,
+      status: { $in: ['active', 'completed'] }
+    })
       .populate('user', 'name email')
       .sort('-createdAt')
       .lean();
 
-    // Fetch enrollments to get payment IDs per applicant email
-    const enrollments = await Enrollment.find({ liveCourse: id }).lean();
-    const enrollmentMap = new Map();
-    for (const en of enrollments) {
-      enrollmentMap.set(en.email || '', en.paymentId || '');
+    // Fetch supplementary CohortApplication data for extra fields
+    const cohortApps = await CohortApplication.find({ liveCourse: id }).lean();
+    const cohortMap = new Map();
+    for (const app of cohortApps) {
+      if (app.user) cohortMap.set(app.user.toString(), app);
+      if (app.email) cohortMap.set(app.email.toLowerCase(), app);
     }
+
+    const applications = enrollments.map((enr) => {
+      const userId = enr.user?._id?.toString();
+      const userEmail = (enr.email || enr.user?.email || '').toLowerCase();
+      const cohort = cohortMap.get(userId) || cohortMap.get(userEmail) || {};
+
+      return {
+        _id: enr._id,
+        fullName: cohort.fullName || enr.fullName || enr.user?.name || 'N/A',
+        email: cohort.email || enr.email || enr.user?.email || 'N/A',
+        mobileNumber: cohort.mobileNumber || enr.phone || 'N/A',
+        whatsappNumber: cohort.whatsappNumber || 'N/A',
+        gender: cohort.gender || 'N/A',
+        courseDepartment: cohort.courseDepartment || 'N/A',
+        experienceLevel: cohort.experienceLevel || 'N/A',
+        status: enr.status === 'active' || enr.status === 'completed' ? 'Enrolled' : enr.status,
+        paymentId: enr.paymentId || 'N/A',
+        createdAt: enr.createdAt,
+      };
+    });
 
     // Dynamically import exceljs (ESM-compatible)
     const ExcelJS = (await import('exceljs')).default;
@@ -1828,8 +1894,8 @@ router.get('/live-courses/:id/applications/export', protect, authorize('admin'),
 
     applications.forEach((app, i) => {
       const appliedDate = app.createdAt ? new Date(app.createdAt) : null;
-      const paymentId   = enrollmentMap.get(app.email || '') || 'N/A';
-      const isPaid      = paymentId !== 'N/A';
+      const paymentId   = app.paymentId;
+      const isPaid      = paymentId !== 'N/A' && paymentId !== undefined && paymentId !== null;
 
       const row = sheet.addRow({
         index:           i + 1,
@@ -1880,9 +1946,10 @@ router.get('/live-courses/:id/applications/export', protect, authorize('admin'),
 
     // ── Summary row at the bottom ──────────────────────────────────────────
     sheet.addRow([]);
+    const paidCount = applications.filter(app => app.paymentId !== 'N/A' && app.paymentId !== undefined && app.paymentId !== null).length;
     const summaryRow = sheet.addRow([
       '', 'Total Applications:', applications.length,
-      '', 'Paid:', enrollments.length,
+      '', 'Paid:', paidCount,
     ]);
     summaryRow.eachCell((cell) => {
       if (cell.value !== '') {

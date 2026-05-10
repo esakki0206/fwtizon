@@ -248,8 +248,9 @@ const enrollUserInCourse = async ({
       throw new Error('This cohort is already full');
     }
     enrollData.liveCourse = liveCourseId;
-    enrollData.amount = isAdminBypass ? 0 : enrolledItem.price;
-    enrollData.originalAmount = originalAmount ?? enrolledItem.price;
+    const rawPrice = enrolledItem.price;
+    enrollData.amount = isAdminBypass ? 0 : (rawPrice - (discountAmount || 0));
+    enrollData.originalAmount = originalAmount ?? rawPrice;
   } else if (courseId) {
     enrolledItem = await Course.findById(courseId);
     if (!enrolledItem) throw new Error('Course not found');

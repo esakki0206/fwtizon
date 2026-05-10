@@ -100,7 +100,10 @@ const liveCourseSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Auto-update status middleware
+// Validate class time fields (pre-save)
+// NOTE: Status is NO LONGER auto-overridden here. The admin controls it
+// manually via the admin panel. This prevents the bug where .save() during
+// enrollment would silently flip status to Ongoing/Completed and block users.
 liveCourseSchema.pre('save', function() {
   if (this.classEndTime && !this.classStartTime) {
     this.invalidate('classStartTime', 'Class start time is required when class end time is set');
@@ -114,22 +117,6 @@ liveCourseSchema.pre('save', function() {
 
     if (endTotal <= startTotal) {
       this.invalidate('classEndTime', 'Class end time must be after class start time');
-    }
-  }
-
-  if (this.status !== 'Draft' && this.status !== 'Cancelled' && this.status !== 'Completed') {
-    const today = new Date();
-    const startDate = this.startDate ? new Date(this.startDate) : null;
-    const endDate = this.endDate ? new Date(this.endDate) : null; // If duration is used without endDate, this might need parsing, but we will assume endDate is provided or we just check startDate
-    
-    if (startDate) {
-      if (today < startDate) {
-        this.status = 'Published';
-      } else if (endDate && today > endDate) {
-        this.status = 'Completed';
-      } else {
-        this.status = 'Ongoing';
-      }
     }
   }
 });

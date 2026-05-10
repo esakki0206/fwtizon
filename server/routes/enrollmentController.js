@@ -287,22 +287,24 @@ const enrollUserInCourse = async ({
     }
   }
 
-  // 4. Update Course Enrollment Count (computed from actual enrollment records)
+  // 4. Update Course Enrollment Count (atomic — avoids triggering pre-save hooks)
   if (liveCourseId) {
     const actualCount = await Enrollment.countDocuments({
       liveCourse: liveCourseId,
       status: { $in: ['active', 'completed'] }
     });
     // +1 because the new enrollment hasn't been created yet
-    enrolledItem.currentEnrollments = actualCount + 1;
-    await enrolledItem.save();
+    await LiveCourse.findByIdAndUpdate(liveCourseId, {
+      $set: { currentEnrollments: actualCount + 1 }
+    });
   } else if (courseId) {
     const actualCount = await Enrollment.countDocuments({
       course: courseId,
       status: { $in: ['active', 'completed'] }
     });
-    enrolledItem.enrollmentCount = actualCount + 1;
-    await enrolledItem.save();
+    await Course.findByIdAndUpdate(courseId, {
+      $set: { enrollmentCount: actualCount + 1 }
+    });
   }
 
   // 5. Increment Coupon Usage (atomic)

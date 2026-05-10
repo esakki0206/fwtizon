@@ -315,6 +315,7 @@ const LiveCourseDetail = () => {
   };
 
   // ── Derive enroll button state ─────────────────────────────────────────────
+  // Priority: loading → enrolled (always show) → completed → full → default
   const renderEnrollButton = () => {
     if (enrollmentLoading) {
       return (
@@ -328,17 +329,8 @@ const LiveCourseDetail = () => {
       );
     }
 
-    if (isCompleted) {
-      return (
-        <button
-          disabled
-          className="w-full py-3 md:py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center"
-        >
-          Completed
-        </button>
-      );
-    }
-
+    // ── Enrolled users ALWAYS see their enrollment status ──
+    // This must come before isCompleted so enrolled users aren't blocked
     if (isEnrolled) {
       return (
         <div className="space-y-2">
@@ -360,7 +352,7 @@ const LiveCourseDetail = () => {
             </a>
           )}
 
-          {isCompleted && isEnrolled && (
+          {isCompleted && (
             <div className="text-center text-xs font-bold text-gray-500 uppercase tracking-widest py-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-800">
               Session Ended
             </div>
@@ -382,6 +374,18 @@ const LiveCourseDetail = () => {
             Go to Dashboard →
           </button>
         </div>
+      );
+    }
+
+    // ── Non-enrolled users: block if completed or cancelled ──
+    if (isCompleted || course.status === 'Cancelled') {
+      return (
+        <button
+          disabled
+          className="w-full py-3 md:py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold text-sm md:text-base rounded-lg md:rounded-xl cursor-not-allowed flex items-center justify-center"
+        >
+          {course.status === 'Cancelled' ? 'Cancelled' : 'Registration Closed'}
+        </button>
       );
     }
 
@@ -757,7 +761,7 @@ const LiveCourseDetail = () => {
                   </div>
                 </div>
 
-                {!isEnrolled && !isFull && !isCompleted && (
+                {!isEnrolled && !isFull && !isCompleted && course.status !== 'Cancelled' && (
                   <div className="mb-4">
                     {appliedCoupon ? (
                       <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg">

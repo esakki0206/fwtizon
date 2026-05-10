@@ -11,6 +11,12 @@ connectDB();
 
 const app = express();
 
+// ── Trust Proxy ──
+// Vercel / Nginx / Cloudflare sit in front of Express.
+// Without this, `req.ip` returns the proxy's IP for ALL users,
+// which makes IP-based rate limiting treat every student as one user.
+app.set('trust proxy', 1);
+
 // ── Security Middleware ──
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },

@@ -253,7 +253,7 @@ const Home = () => {
                     )}
 
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 leading-snug line-clamp-2">{cohort.title}</h3>
-                    <p className="text-gray-500 dark:text-gray-400 mb-4 font-medium text-xs">with {cohort.instructor?.name || 'Expert Instructor'}</p>
+                    <p className="text-gray-500 dark:text-gray-400 mb-4 font-medium text-xs">with {(cohort.instructorName || cohort.instructor?.name) === 'System Admin' ? 'Fwtizon Academy' : (cohort.instructorName || cohort.instructor?.name || 'Fwtizon Academy')}</p>
 
                     <div className="grid grid-cols-2 gap-2 mb-6 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-2xl border border-gray-100 dark:border-gray-800 flex-grow">
                       <div className="flex flex-col p-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800/80 shadow-sm">

@@ -8,11 +8,15 @@ import { motion } from 'framer-motion';
 // Prefers admin-set override fields (instructorName / instructorPhoto / displayInstructor*)
 // then falls back to the populated User ref, then to a generated avatar.
 const resolveInstructor = (data) => {
-  const name =
+  let name =
     data?.displayInstructorName ||
     data?.instructorName ||
     data?.instructor?.name ||
     'Fwtizon Academy';
+
+  if (name === 'System Admin') {
+    name = 'Fwtizon Academy';
+  }
 
   const rawPhoto =
     data?.displayInstructorPhoto ||

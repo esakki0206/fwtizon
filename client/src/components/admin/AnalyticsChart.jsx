@@ -63,6 +63,12 @@ const AnalyticsChart = ({
     padding: '10px 14px',
   };
 
+  const formatYAxis = (val) => {
+    if (val >= 1000000) return `${valuePrefix}${(val / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (val >= 1000) return `${valuePrefix}${(val / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+    return `${valuePrefix}${val}`;
+  };
+
   const renderChart = () => {
     if (!data || data.length === 0) {
       return (
@@ -94,8 +100,8 @@ const AnalyticsChart = ({
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" opacity={0.4} />
               <XAxis dataKey={xKey} {...commonAxisProps} dy={8} />
-              <YAxis {...commonAxisProps} tickFormatter={(val) => `${valuePrefix}${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(val) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || dataKey]} labelStyle={{ color: '#9ca3af', marginBottom: '4px' }} />
+              <YAxis {...commonAxisProps} tickFormatter={formatYAxis} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(val, name) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || name]} labelStyle={{ color: '#9ca3af', marginBottom: '4px' }} />
               <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} fillOpacity={1} fill={`url(#${gId})`} />
               {secondaryDataKey && (
                 <Area type="monotone" dataKey={secondaryDataKey} stroke={secondaryColor} strokeWidth={2} fillOpacity={0} />
@@ -110,8 +116,8 @@ const AnalyticsChart = ({
             <BarChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" opacity={0.3} />
               <XAxis dataKey={xKey} {...commonAxisProps} dy={8} />
-              <YAxis {...commonAxisProps} tickFormatter={(val) => `${valuePrefix}${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`} />
-              <Tooltip cursor={{ fill: '#f3f4f6', opacity: 0.15 }} contentStyle={tooltipStyle} formatter={(val) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || dataKey]} labelStyle={{ color: '#9ca3af' }} />
+              <YAxis {...commonAxisProps} tickFormatter={formatYAxis} />
+              <Tooltip cursor={{ fill: '#f3f4f6', opacity: 0.15 }} contentStyle={tooltipStyle} formatter={(val, name) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || name]} labelStyle={{ color: '#9ca3af' }} />
               <Bar dataKey={dataKey} fill={color} radius={[6, 6, 0, 0]} />
               {secondaryDataKey && (
                 <Bar dataKey={secondaryDataKey} fill={secondaryColor} radius={[6, 6, 0, 0]} />
@@ -126,8 +132,8 @@ const AnalyticsChart = ({
             <LineChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" opacity={0.4} />
               <XAxis dataKey={xKey} {...commonAxisProps} dy={8} />
-              <YAxis {...commonAxisProps} tickFormatter={(val) => `${valuePrefix}${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(val) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || dataKey]} labelStyle={{ color: '#9ca3af' }} />
+              <YAxis {...commonAxisProps} tickFormatter={formatYAxis} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(val, name) => [`${valuePrefix}${val.toLocaleString('en-IN')}`, valueLabel || name]} labelStyle={{ color: '#9ca3af' }} />
               <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} dot={{ fill: color, r: 3 }} activeDot={{ r: 5 }} />
               {secondaryDataKey && (
                 <Line type="monotone" dataKey={secondaryDataKey} stroke={secondaryColor} strokeWidth={2} dot={{ fill: secondaryColor, r: 3 }} />

@@ -160,7 +160,7 @@ const AdminAnalytics = () => {
           type="line"
           data={data?.userGrowth || []}
           dataKey="users"
-          xKey="shortMonth"
+          xKey="label"
           color="#6366f1"
           loading={loading}
           valueLabel="New Users"
@@ -188,7 +188,7 @@ const AdminAnalytics = () => {
           type="area"
           data={data?.revenueByPeriod || []}
           dataKey="revenue"
-          xKey="shortMonth"
+          xKey="label"
           color="#f59e0b"
           loading={loading}
           valuePrefix="₹"
@@ -196,7 +196,7 @@ const AdminAnalytics = () => {
           gradientId="revTrendGrad"
           badge={
             <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-md">
-              {data?.revenueByPeriod?.length || 0} months
+              {data?.revenueByPeriod?.length || 0} {data?.useDaily ? 'days' : 'months'}
             </span>
           }
         />
@@ -208,7 +208,7 @@ const AdminAnalytics = () => {
           type="bar"
           data={data?.enrollmentTrends || []}
           dataKey="enrollments"
-          xKey="shortMonth"
+          xKey="label"
           color="#8b5cf6"
           loading={loading}
           valueLabel="Enrollments"
@@ -236,7 +236,7 @@ const AdminAnalytics = () => {
           type="line"
           data={data?.revenueByPeriod || []}
           dataKey="transactions"
-          xKey="shortMonth"
+          xKey="label"
           color="#ec4899"
           loading={loading}
           valueLabel="Transactions"

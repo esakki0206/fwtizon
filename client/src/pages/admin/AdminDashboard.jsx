@@ -214,7 +214,11 @@ const AdminDashboard = () => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" opacity={0.4} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={8} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(val) => {
+                    if (val >= 1000000) return `₹${(val / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+                    if (val >= 1000) return `₹${(val / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+                    return `₹${val}`;
+                  }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '10px', color: '#fff', fontSize: '12px', padding: '10px 14px' }}
                     formatter={(val) => [`₹${val.toLocaleString('en-IN')}`, 'Revenue']}
@@ -299,6 +303,7 @@ const AdminDashboard = () => {
                   </Pie>
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '10px', color: '#fff', fontSize: '12px' }}
+                    formatter={(val, name) => [val, name]}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -348,34 +353,41 @@ const AdminDashboard = () => {
       </div>
 
       {/* ── Enrollment Type Split ── */}
-      {analytics?.enrollmentSplit && (analytics.enrollmentSplit.auto > 0 || analytics.enrollmentSplit.paid > 0 || analytics.enrollmentSplit.free > 0) && (
+      {analytics?.enrollmentSplit && (analytics.enrollmentSplit.auto > 0 || analytics.enrollmentSplit.paid > 0 || analytics.enrollmentSplit.free > 0 || analytics.enrollmentSplit.admin > 0) && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <FiLink className="text-indigo-500" size={16} />
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">Enrollment Type Split</h3>
             <span className="text-[10px] text-gray-400 ml-auto">Normal courses only</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-900/15 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                {analytics.enrollmentSplit.auto}
+                {analytics.enrollmentSplit.auto || 0}
               </p>
               <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mt-1">Auto-Enrolled</p>
               <p className="text-[9px] text-emerald-500/70 mt-0.5">Via Live Course Link</p>
             </div>
             <div className="text-center p-4 bg-indigo-50 dark:bg-indigo-900/15 rounded-xl border border-indigo-100 dark:border-indigo-800/40">
               <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                {analytics.enrollmentSplit.paid}
+                {analytics.enrollmentSplit.paid || 0}
               </p>
               <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mt-1">Paid</p>
               <p className="text-[9px] text-indigo-500/70 mt-0.5">Razorpay Payment</p>
             </div>
             <div className="text-center p-4 bg-amber-50 dark:bg-amber-900/15 rounded-xl border border-amber-100 dark:border-amber-800/40">
               <p className="text-2xl font-black text-amber-600 dark:text-amber-400">
-                {analytics.enrollmentSplit.free}
+                {analytics.enrollmentSplit.free || 0}
               </p>
               <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mt-1">Free</p>
-              <p className="text-[9px] text-amber-500/70 mt-0.5">₹0 Courses / 100% Coupon</p>
+              <p className="text-[9px] text-amber-500/70 mt-0.5">100% Coupon</p>
+            </div>
+            <div className="text-center p-4 bg-violet-50 dark:bg-violet-900/15 rounded-xl border border-violet-100 dark:border-violet-800/40">
+              <p className="text-2xl font-black text-violet-600 dark:text-violet-400">
+                {analytics.enrollmentSplit.admin || 0}
+              </p>
+              <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider mt-1">Admin</p>
+              <p className="text-[9px] text-violet-500/70 mt-0.5">Direct Enrollment</p>
             </div>
           </div>
         </div>

@@ -318,52 +318,97 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
 
     const dateFilter = { $gte: from, $lte: to };
 
-    // ── User growth (monthly registrations) ──
-    const userGrowth = await User.aggregate([
-      { $match: { role: { $ne: 'admin' }, createdAt: dateFilter } },
-      {
-        $group: {
-          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+    // ── Determine granularity: daily if range ≤ 31 days, monthly otherwise ──
+    const rangeDays = Math.ceil((to - from) / (1000 * 60 * 60 * 24));
+    const useDaily = rangeDays <= 31;
 
-    const formattedUserGrowth = userGrowth.map(item => ({
-      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
-      shortMonth: MONTH_NAMES[item._id.month - 1],
-      users: item.count,
-    }));
+    // Helper functions for labels
+    const getMonthLabel = (year, month) => `${MONTH_NAMES[month - 1]} '${String(year).slice(-2)}`;
+    const getDayLabel = (year, month, day) => `${day} ${MONTH_NAMES[month - 1]}`;
+    const getFullMonth = (year, month) => `${MONTH_NAMES[month - 1]} ${year}`;
+    const getFullDay = (year, month, day) => `${day} ${MONTH_NAMES[month - 1]} ${year}`;
 
-    // ── Daily active users (last 30 days) ──
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const dailyActiveUsers = await User.aggregate([
-      { $match: { role: { $ne: 'admin' }, lastLogin: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$lastLogin' },
-            month: { $month: '$lastLogin' },
-            day: { $dayOfMonth: '$lastLogin' },
+    // ── User growth ──
+    let formattedUserGrowth;
+    if (useDaily) {
+      const userGrowth = await User.aggregate([
+        { $match: { role: { $ne: 'admin' }, createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+            count: { $sum: 1 },
           },
-          count: { $sum: 1 },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]);
+      formattedUserGrowth = userGrowth.map(item => ({
+        label: getDayLabel(item._id.year, item._id.month, item._id.day),
+        shortMonth: getDayLabel(item._id.year, item._id.month, item._id.day),
+        month: getFullDay(item._id.year, item._id.month, item._id.day),
+        users: item.count,
+      }));
+    } else {
+      const userGrowth = await User.aggregate([
+        { $match: { role: { $ne: 'admin' }, createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
+      formattedUserGrowth = userGrowth.map(item => ({
+        label: getMonthLabel(item._id.year, item._id.month),
+        shortMonth: getMonthLabel(item._id.year, item._id.month),
+        month: getFullMonth(item._id.year, item._id.month),
+        users: item.count,
+      }));
+    }
 
-    const formattedDAU = dailyActiveUsers.map(item => ({
-      date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`,
-      label: `${MONTH_NAMES[item._id.month - 1]} ${item._id.day}`,
-      users: item.count,
-    }));
+    // ── Daily active users (respects date range) ──
+    let formattedDAU;
+    if (useDaily) {
+      const dailyActiveUsers = await User.aggregate([
+        { $match: { role: { $ne: 'admin' }, lastLogin: dateFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$lastLogin' },
+              month: { $month: '$lastLogin' },
+              day: { $dayOfMonth: '$lastLogin' },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]);
+      formattedDAU = dailyActiveUsers.map(item => ({
+        date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`,
+        label: getDayLabel(item._id.year, item._id.month, item._id.day),
+        users: item.count,
+      }));
+    } else {
+      const monthlyActiveUsers = await User.aggregate([
+        { $match: { role: { $ne: 'admin' }, lastLogin: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$lastLogin' }, month: { $month: '$lastLogin' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
+      formattedDAU = monthlyActiveUsers.map(item => ({
+        date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+        label: getMonthLabel(item._id.year, item._id.month),
+        users: item.count,
+      }));
+    }
 
-    // ── Login frequency (hourly distribution) ──
+    // ── Login frequency (respects date range) ──
     const loginFrequency = await User.aggregate([
-      { $match: { lastLogin: { $exists: true } } },
+      { $match: { lastLogin: { $exists: true, ...dateFilter } } },
       {
         $group: {
           _id: { $hour: '$lastLogin' },
@@ -378,52 +423,95 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
       logins: item.count,
     }));
 
-    // ── Peak usage hours ──
     const peakHour = loginFrequency.length > 0
       ? loginFrequency.reduce((max, item) => item.count > max.count ? item : max, { count: 0 })
       : null;
 
     // ── Course enrollment trends ──
-    const enrollmentTrends = await Enrollment.aggregate([
-      { $match: { createdAt: dateFilter } },
-      {
-        $group: {
-          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
-          count: { $sum: 1 },
-          revenue: { $sum: '$amount' },
+    let formattedEnrollmentTrends;
+    if (useDaily) {
+      const enrollmentTrends = await Enrollment.aggregate([
+        { $match: { createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+            count: { $sum: 1 },
+            revenue: { $sum: '$amount' },
+          },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
-
-    const formattedEnrollmentTrends = enrollmentTrends.map(item => ({
-      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
-      shortMonth: MONTH_NAMES[item._id.month - 1],
-      enrollments: item.count,
-      revenue: item.revenue || 0,
-    }));
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]);
+      formattedEnrollmentTrends = enrollmentTrends.map(item => ({
+        label: getDayLabel(item._id.year, item._id.month, item._id.day),
+        shortMonth: getDayLabel(item._id.year, item._id.month, item._id.day),
+        month: getFullDay(item._id.year, item._id.month, item._id.day),
+        enrollments: item.count,
+        revenue: item.revenue || 0,
+      }));
+    } else {
+      const enrollmentTrends = await Enrollment.aggregate([
+        { $match: { createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+            count: { $sum: 1 },
+            revenue: { $sum: '$amount' },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
+      formattedEnrollmentTrends = enrollmentTrends.map(item => ({
+        label: getMonthLabel(item._id.year, item._id.month),
+        shortMonth: getMonthLabel(item._id.year, item._id.month),
+        month: getFullMonth(item._id.year, item._id.month),
+        enrollments: item.count,
+        revenue: item.revenue || 0,
+      }));
+    }
 
     // ── Revenue by period ──
-    const revenueByPeriod = await Enrollment.aggregate([
-      { $match: { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 }, createdAt: dateFilter } },
-      {
-        $group: {
-          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
-          revenue: { $sum: '$amount' },
-          transactions: { $sum: 1 },
+    let formattedRevenue;
+    if (useDaily) {
+      const revenueByPeriod = await Enrollment.aggregate([
+        { $match: { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 }, createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+            revenue: { $sum: '$amount' },
+            transactions: { $sum: 1 },
+          },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]);
+      formattedRevenue = revenueByPeriod.map(item => ({
+        label: getDayLabel(item._id.year, item._id.month, item._id.day),
+        shortMonth: getDayLabel(item._id.year, item._id.month, item._id.day),
+        month: getFullDay(item._id.year, item._id.month, item._id.day),
+        revenue: item.revenue,
+        transactions: item.transactions,
+      }));
+    } else {
+      const revenueByPeriod = await Enrollment.aggregate([
+        { $match: { status: { $in: ['active', 'completed'] }, amount: { $gt: 0 }, createdAt: dateFilter } },
+        {
+          $group: {
+            _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+            revenue: { $sum: '$amount' },
+            transactions: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
+      formattedRevenue = revenueByPeriod.map(item => ({
+        label: getMonthLabel(item._id.year, item._id.month),
+        shortMonth: getMonthLabel(item._id.year, item._id.month),
+        month: getFullMonth(item._id.year, item._id.month),
+        revenue: item.revenue,
+        transactions: item.transactions,
+      }));
+    }
 
-    const formattedRevenue = revenueByPeriod.map(item => ({
-      month: `${MONTH_NAMES[item._id.month - 1]} ${item._id.year}`,
-      shortMonth: MONTH_NAMES[item._id.month - 1],
-      revenue: item.revenue,
-      transactions: item.transactions,
-    }));
-
-    // ── Retention / churn ──
+    // ── Retention / churn (always current month relative to now) ──
     const totalUsers = await User.countDocuments({ role: { $ne: 'admin' } });
     const activeUsersMonth = await User.countDocuments({
       role: { $ne: 'admin' },
@@ -432,7 +520,7 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
     const retentionRate = totalUsers > 0 ? Math.round((activeUsersMonth / totalUsers) * 1000) / 10 : 0;
     const churnRate = Math.round((100 - retentionRate) * 10) / 10;
 
-    // ── Most active users ──
+    // ── Most active users (all-time) ──
     const mostActiveUsers = await Enrollment.aggregate([
       { $match: { status: { $in: ['active', 'completed'] } } },
       { $group: { _id: '$user', enrollmentCount: { $sum: 1 } } },
@@ -458,7 +546,7 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
       },
     ]);
 
-    // ── Most popular courses ──
+    // ── Most popular courses (all-time) ──
     const mostPopularCourses = await Enrollment.aggregate([
       { $match: { course: { $exists: true, $ne: null }, status: { $in: ['active', 'completed'] } } },
       { $group: { _id: '$course', enrollmentCount: { $sum: 1 }, revenue: { $sum: '$amount' } } },
@@ -507,6 +595,8 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
         peakHour: peakHour ? `${String(peakHour._id).padStart(2, '0')}:00` : 'N/A',
         mostActiveUsers,
         mostPopularCourses,
+        rangeDays,
+        useDaily,
       },
     });
   } catch (error) {
@@ -514,6 +604,7 @@ router.get('/analytics/advanced', protect, authorize('admin'), async (req, res) 
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
 
 // ==============================
 // ACTIVITY FEED

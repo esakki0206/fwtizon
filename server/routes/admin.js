@@ -18,6 +18,7 @@ import { generateCertificatePDF } from '../utils/generateCertificatePDF.js';
 import { uploadPdfToCloudinary } from '../utils/uploadPdfToCloudinary.js';
 import CertificateTemplate from '../models/CertificateTemplate.js';
 import { buildAndStoreCertificate, resolveTemplate } from './certificateController.js';
+import { enrollUserInCourse } from './enrollmentController.js';
 import { sanitizeLiveCoursePayload } from '../utils/liveCoursePayload.js';
 import { protect, authorize } from '../middleware/auth.js';
 import sendEmail from '../utils/sendEmail.js';
@@ -259,6 +260,7 @@ router.get('/analytics', protect, authorize('admin'), async (req, res) => {
       auto: 0,
       paid: 0,
       free: 0,
+      admin: 0,
     };
     enrollmentTypeSplit.forEach(item => {
       if (item._id && enrollmentSplit.hasOwnProperty(item._id)) {
@@ -1253,6 +1255,116 @@ router.get('/enrollments', protect, authorize('admin'), async (req, res) => {
     res.status(200).json({ success: true, count: enrollments.length, data: enrollments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Get all courses (normal + live) for the admin enroll-member dropdown
+ * @route   GET /api/admin/all-courses
+ * @access  Private/Admin
+ */
+router.get('/all-courses', protect, authorize('admin'), async (req, res) => {
+  try {
+    const [courses, liveCourses] = await Promise.all([
+      Course.find({ status: 'published' }).select('title price thumbnail category').sort('title').lean(),
+      LiveCourse.find({ status: { $in: ['Published', 'Ongoing'] } }).select('title price thumbnail domain').sort('title').lean(),
+    ]);
+
+    const combined = [
+      ...courses.map(c => ({ _id: c._id, title: c.title, price: c.price, thumbnail: c.thumbnail, category: c.category || '', courseType: 'course' })),
+      ...liveCourses.map(lc => ({ _id: lc._id, title: lc.title, price: lc.price, thumbnail: lc.thumbnail, category: lc.domain || '', courseType: 'live' })),
+    ];
+
+    res.status(200).json({ success: true, count: combined.length, data: combined });
+  } catch (error) {
+    console.error('All courses fetch error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Admin direct enrollment — enroll a user by email into a course without payment
+ * @route   POST /api/admin/enroll-member
+ * @access  Private/Admin
+ */
+router.post('/enroll-member', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { email, courseId, liveCourseId } = req.body;
+
+    // ── Input Validation ──
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'User email is required' });
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!courseId && !liveCourseId) {
+      return res.status(400).json({ success: false, message: 'Either courseId or liveCourseId is required' });
+    }
+    if (courseId && liveCourseId) {
+      return res.status(400).json({ success: false, message: 'Provide only one of courseId or liveCourseId, not both' });
+    }
+    if (courseId && !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+    if (liveCourseId && !isValidObjectId(liveCourseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
+    }
+
+    // ── Look up user by email ──
+    const targetUser = await User.findOne({ email: trimmedEmail });
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: `No registered user found with email "${trimmedEmail}". The user must have an account before they can be enrolled.`,
+      });
+    }
+
+    // ── Verify course exists ──
+    let courseTitle = '';
+    if (courseId) {
+      const course = await Course.findById(courseId).select('title');
+      if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+      courseTitle = course.title;
+    } else {
+      const liveCourse = await LiveCourse.findById(liveCourseId).select('title');
+      if (!liveCourse) return res.status(404).json({ success: false, message: 'Live course not found' });
+      courseTitle = liveCourse.title;
+    }
+
+    // ── Enroll using shared helper ──
+    const result = await enrollUserInCourse({
+      user: { id: targetUser._id, name: targetUser.name, email: targetUser.email },
+      courseId: courseId || undefined,
+      liveCourseId: liveCourseId || undefined,
+      fullName: targetUser.name,
+      email: targetUser.email,
+      paymentId: `admin_enroll_${Date.now()}`,
+      orderId: `admin_order_${Date.now()}`,
+      isAdminBypass: true,
+      enrollmentType: 'admin',
+      couponCode: null,
+      discountAmount: 0,
+      originalAmount: null,
+    });
+
+    if (result.alreadyEnrolled) {
+      return res.status(409).json({
+        success: false,
+        message: `${targetUser.name} (${targetUser.email}) is already enrolled in "${courseTitle}".`,
+      });
+    }
+
+    console.log(`[ADMIN ENROLL] Admin ${req.user.email} enrolled ${targetUser.email} in "${courseTitle}"`);
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully enrolled ${targetUser.name} (${targetUser.email}) in "${courseTitle}"`,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Admin enroll-member error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to enroll member' });
   }
 });
 

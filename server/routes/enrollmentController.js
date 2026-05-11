@@ -196,7 +196,7 @@ export const createOrder = async (req, res) => {
 };
 
 // ── Helper: Reusable Enrollment Logic ───────────────────────────────────────
-const enrollUserInCourse = async ({
+export const enrollUserInCourse = async ({
   user,
   courseId,
   liveCourseId,

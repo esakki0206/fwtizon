@@ -22,7 +22,7 @@ const enrollmentSchema = new mongoose.Schema({
   },
   enrollmentType: {
     type: String,
-    enum: ['auto', 'paid', 'free'],
+    enum: ['auto', 'paid', 'free', 'admin'],
     default: 'paid',
   },
   status: {

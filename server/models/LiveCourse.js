@@ -93,7 +93,7 @@ const liveCourseSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'Published', 'Ongoing', 'Completed', 'Cancelled'],
+    enum: ['Draft', 'Published', 'Ongoing', 'Completed', 'Cancelled', 'Hidden'],
     default: 'Draft',
   },
 }, {

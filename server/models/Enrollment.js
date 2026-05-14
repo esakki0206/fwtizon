@@ -84,9 +84,19 @@ enrollmentSchema.pre('validate', function () {
   }
 });
 
-// Prevent duplicate enrollments but allow sparse logic
-enrollmentSchema.index({ user: 1, course: 1 }, { unique: true, sparse: true });
-enrollmentSchema.index({ user: 1, liveCourse: 1 }, { unique: true, sparse: true });
+// Prevent duplicate enrollments — use partialFilterExpression so the unique
+// constraint only applies to documents that actually reference that course type.
+// sparse:true on compound indexes does NOT behave as expected when one key (user)
+// is always present — it would still index rows where course/liveCourse is null,
+// causing false duplicate-key errors across unrelated enrollments.
+enrollmentSchema.index(
+  { user: 1, course: 1 },
+  { unique: true, partialFilterExpression: { course: { $exists: true, $ne: null } } }
+);
+enrollmentSchema.index(
+  { user: 1, liveCourse: 1 },
+  { unique: true, partialFilterExpression: { liveCourse: { $exists: true, $ne: null } } }
+);
 
 const Enrollment = mongoose.model('Enrollment', enrollmentSchema);
 export default Enrollment;

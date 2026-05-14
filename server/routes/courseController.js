@@ -1,4 +1,5 @@
 import Course from '../models/Course.js';
+import Enrollment from '../models/Enrollment.js';
 
 // ─── Helper ────────────────────────────────────────────────────────────────
 // Merges course's optional display overrides with the populated User data so
@@ -107,6 +108,12 @@ export const getCourse = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
+    if (course.status === 'hidden' || course.status === 'draft') {
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: attachDisplayInstructor(course),
@@ -141,6 +148,12 @@ export const getCourseContent = async (req, res) => {
 
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    if (course.status === 'hidden' || course.status === 'draft') {
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
     }
 
     res.status(200).json({

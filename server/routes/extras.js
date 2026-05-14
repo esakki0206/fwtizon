@@ -5,7 +5,7 @@ import Notification from '../models/Notification.js';
 import Course from '../models/Course.js';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect, authorize, optionalAuth } from '../middleware/auth.js';
 // Use uploadImage (image-optimized: auto quality, auto format, max 1200px)
 // NOT the generic `upload` which is for files/videos and skips image transforms.
 import { uploadImage } from '../config/cloudinary.js';
@@ -72,7 +72,7 @@ router.post('/reviews', protect, async (req, res) => {
 // ======================
 router.get('/live-courses', async (req, res) => {
   try {
-    const courses = await LiveCourse.find().select('-zoomLink -whatsappGroup').populate('instructor', 'name avatar');
+    const courses = await LiveCourse.find({ status: { $nin: ['Draft', 'Hidden'] } }).select('-zoomLink -whatsappGroup').populate('instructor', 'name avatar');
     res.status(200).json({ success: true, count: courses.length, data: courses });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -84,7 +84,7 @@ router.get('/live-courses', async (req, res) => {
  * @route   GET /api/live-courses/:id
  * @access  Public
  */
-router.get('/live-courses/:id', async (req, res) => {
+router.get('/live-courses/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
@@ -94,6 +94,11 @@ router.get('/live-courses/:id', async (req, res) => {
       .populate('instructor', 'name avatar bio');
     if (!course) {
       return res.status(404).json({ success: false, message: 'Live course not found' });
+    }
+    if (course.status === 'Hidden' || course.status === 'Draft') {
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(404).json({ success: false, message: 'Live course not found' });
+      }
     }
     res.status(200).json({ success: true, data: course });
   } catch (err) {

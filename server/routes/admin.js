@@ -1357,8 +1357,8 @@ router.get('/enrollments', protect, authorize('admin'), async (req, res) => {
 router.get('/all-courses', protect, authorize('admin'), async (req, res) => {
   try {
     const [courses, liveCourses] = await Promise.all([
-      Course.find({ status: 'published' }).select('title price thumbnail category').sort('title').lean(),
-      LiveCourse.find({ status: { $in: ['Published', 'Ongoing'] } }).select('title price thumbnail domain').sort('title').lean(),
+      Course.find({ status: { $in: ['published', 'hidden'] } }).select('title price thumbnail category').sort('title').lean(),
+      LiveCourse.find({ status: { $in: ['Published', 'Ongoing', 'Hidden'] } }).select('title price thumbnail domain').sort('title').lean(),
     ]);
 
     const combined = [

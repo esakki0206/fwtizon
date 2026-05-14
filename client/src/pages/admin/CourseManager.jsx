@@ -770,6 +770,7 @@ const CourseManager = () => {
                       className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none"
                     >
                       <option value="published">Published — visible to all</option>
+                      <option value="hidden">Hidden — enrolled only</option>
                       <option value="draft">Draft — hidden</option>
                     </select>
                   </div>

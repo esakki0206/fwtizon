@@ -110,13 +110,13 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'This live class is full' });
     }
 
-    // Prevent duplicate enrollments
-    const existQuery = {
-      user: req.user.id,
-      status: { $in: ['active', 'completed'] },
-    };
-    if (liveCourseId) existQuery.liveCourse = liveCourseId;
-    if (courseId) existQuery.course = courseId;
+    // Prevent duplicate enrollments — scope to exact course type
+    let existQuery;
+    if (liveCourseId) {
+      existQuery = { user: req.user.id, liveCourse: liveCourseId, status: { $in: ['active', 'completed'] } };
+    } else {
+      existQuery = { user: req.user.id, course: courseId, status: { $in: ['active', 'completed'] } };
+    }
 
     const existing = await Enrollment.findOne(existQuery);
     if (existing) {
@@ -216,10 +216,15 @@ export const enrollUserInCourse = async ({
   originalAmount = null,
   enrollmentType = 'paid',
 }) => {
-  // 1. Prevent duplicate enrollments
-  const existQuery = { user: user.id, status: { $in: ['active', 'completed'] } };
-  if (liveCourseId) existQuery.liveCourse = liveCourseId;
-  if (courseId) existQuery.course = courseId;
+  // 1. Prevent duplicate enrollments — scope query to the EXACT course type
+  let existQuery;
+  if (liveCourseId) {
+    existQuery = { user: user.id, liveCourse: liveCourseId, status: { $in: ['active', 'completed'] } };
+  } else if (courseId) {
+    existQuery = { user: user.id, course: courseId, status: { $in: ['active', 'completed'] } };
+  } else {
+    throw new Error('Either courseId or liveCourseId must be provided');
+  }
 
   const existingEnrollment = await Enrollment.findOne(existQuery);
   if (existingEnrollment) {
@@ -339,9 +344,12 @@ export const enrollUserInCourse = async ({
     }
   } catch (createErr) {
     if (createErr.code === 11000) {
-      const duplicateQuery = { user: user.id };
-      if (liveCourseId) duplicateQuery.liveCourse = liveCourseId;
-      else if (courseId) duplicateQuery.course = courseId;
+      let duplicateQuery;
+      if (liveCourseId) {
+        duplicateQuery = { user: user.id, liveCourse: liveCourseId };
+      } else {
+        duplicateQuery = { user: user.id, course: courseId };
+      }
       const existingRecord = await Enrollment.findOne(duplicateQuery);
       return { success: true, alreadyEnrolled: true, message: 'Already enrolled', data: existingRecord };
     }
@@ -656,16 +664,20 @@ export const getMyCourses = async (req, res) => {
     const enrollments = await Enrollment.find({ user: req.user.id })
       .populate({
         path: 'course',
+        match: { status: { $nin: ['hidden', 'draft'] } },
         select: 'title slug thumbnail instructor instructorName instructorPhoto category price',
         populate: { path: 'instructor', select: 'name avatar' },
       })
       .populate({
         path: 'liveCourse',
+        match: { status: { $nin: ['Hidden', 'Draft'] } },
         select: 'title thumbnail instructor category zoomLink whatsappGroup startDate classStartTime classEndTime timezone duration schedule price',
         populate: { path: 'instructor', select: 'name avatar' },
       });
 
-    res.status(200).json({ success: true, count: enrollments.length, data: enrollments });
+    const validEnrollments = enrollments.filter(e => e.course || e.liveCourse);
+
+    res.status(200).json({ success: true, count: validEnrollments.length, data: validEnrollments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -766,12 +778,13 @@ export const checkEnrollmentStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid liveCourseId format' });
     }
 
-    const query = {
-      user: req.user.id,
-      status: { $in: ['active', 'completed'] },
-    };
-    if (liveCourseId) query.liveCourse = liveCourseId;
-    if (courseId) query.course = courseId;
+    // Scope query to exact course type
+    let query;
+    if (liveCourseId) {
+      query = { user: req.user.id, liveCourse: liveCourseId, status: { $in: ['active', 'completed'] } };
+    } else {
+      query = { user: req.user.id, course: courseId, status: { $in: ['active', 'completed'] } };
+    }
 
     const enrollment = await Enrollment.findOne(query).populate('liveCourse', 'zoomLink').lean();
     

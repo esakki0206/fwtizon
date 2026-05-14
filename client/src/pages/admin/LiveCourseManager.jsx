@@ -541,6 +541,7 @@ const LiveCourseManager = () => {
                       <option value="Ongoing">Ongoing</option>
                       <option value="Completed">Completed</option>
                       <option value="Cancelled">Cancelled</option>
+                      <option value="Hidden">Hidden</option>
                     </select>
                   </div>
                 </CardContent>

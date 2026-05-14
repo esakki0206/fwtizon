@@ -7,7 +7,7 @@ import {
   deleteCourse,
   getCourseContent,
 } from './courseController.js';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect, authorize, optionalAuth } from '../middleware/auth.js';
 import { checkEnrollment } from '../middleware/checkEnrollment.js';
 import reviewRouter from './reviews.js';
 
@@ -27,6 +27,6 @@ router
   .put(protect, authorize('instructor', 'admin'), updateCourse)
   .delete(protect, authorize('instructor', 'admin'), deleteCourse);
 
-router.route('/:slug').get(getCourse);
+router.route('/:slug').get(optionalAuth, getCourse);
 
 export default router;

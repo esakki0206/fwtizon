@@ -608,13 +608,21 @@ const CourseDetail = () => {
                     Checking status…
                   </Button>
                 ) : isEnrolled ? (
-                  <Button
-                    disabled
-                    size="lg"
-                    className="w-full h-12 rounded-xl font-bold text-sm mb-4 bg-green-500 text-white opacity-100 cursor-default"
-                  >
-                    <FiCheck className="mr-2" size={16} /> Enrolled
-                  </Button>
+                  <>
+                    <Button
+                      disabled
+                      size="lg"
+                      className="w-full h-12 rounded-xl font-bold text-sm mb-3 bg-green-500 text-white opacity-100 cursor-default"
+                    >
+                      <FiCheck className="mr-2" size={16} /> Enrolled
+                    </Button>
+                    <button
+                      onClick={() => navigate('/dashboard')}
+                      className="w-full mb-4 py-2 text-sm text-gray-500 dark:text-gray-400 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition"
+                    >
+                      Go to Dashboard →
+                    </button>
+                  </>
                 ) : eligibleForFree ? (
                   <>
                     <div className="mb-3 flex items-center gap-2 text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-3 py-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800">

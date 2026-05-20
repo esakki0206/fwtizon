@@ -43,8 +43,8 @@ const downloadPdf = async (receiptId, type = 'download') => {
       err.response?.status === 404
         ? 'Receipt PDF not found.'
         : err.response?.status === 403
-        ? 'Access denied.'
-        : 'Failed to load PDF. Try again.',
+          ? 'Access denied.'
+          : 'Failed to load PDF. Try again.',
       { id: toastId }
     );
   }
@@ -54,11 +54,10 @@ const downloadPdf = async (receiptId, type = 'download') => {
 const StatusBadge = ({ status }) => {
   const ok = status === 'success' || status === 'active' || status === 'completed' || status === 'SUCCESS';
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-      ok
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${ok
         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
         : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-    }`}>
+      }`}>
       {ok ? <FiCheckCircle size={11} /> : <FiXCircle size={11} />}
       {String(status).toUpperCase()}
     </span>
@@ -219,22 +218,22 @@ const PaymentManager = () => {
             Track revenue, expenses, student payments, and manage official receipts.
           </p>
         </div>
-        
+
         {activeTab === 'dashboard' && (
-           <div className="flex items-center gap-2">
-            <button 
+          <div className="flex items-center gap-2">
+            <button
               onClick={fetchFinanceData}
               className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition text-gray-600 dark:text-gray-300"
             >
               <FiRefreshCw size={16} className={financeLoading ? 'animate-spin' : ''} />
             </button>
-            <a 
-              href="/api/admin/financial/export/pdf?type=courses-summary" 
+            <a
+              href="/api/admin/financial/export/excel?type=courses-summary"
               target="_blank"
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg shadow-sm text-sm font-semibold transition"
             >
               <FiDownload size={16} />
-              Export PDF
+              Export Excel
             </a>
           </div>
         )}
@@ -246,11 +245,10 @@ const PaymentManager = () => {
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`relative flex items-center gap-2 pb-3 px-4 text-sm font-semibold whitespace-nowrap transition-colors ${
-              activeTab === key
+            className={`relative flex items-center gap-2 pb-3 px-4 text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === key
                 ? 'text-primary-600 dark:text-primary-400'
                 : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
+              }`}
           >
             <Icon size={14} />
             {label}
@@ -266,7 +264,7 @@ const PaymentManager = () => {
 
       {/* Tab content */}
       <AnimatePresence mode="wait">
-        
+
         {/* NEW DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
           <motion.div
@@ -335,39 +333,39 @@ const PaymentManager = () => {
                 {paymentsLoading
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
                   : filteredPayments.map((p) => (
-                      <tr
-                        key={p.id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-                      >
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                            {p.id}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{p.studentName}</p>
-                          <p className="text-[11px] text-gray-500 hidden xs:block">{p.email}</p>
-                        </td>
-                        <td className="px-4 py-3 hidden sm:table-cell max-w-[200px]">
-                          <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1">{p.course}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-bold text-gray-900 dark:text-white">
-                            ₹{Number(p.amount).toLocaleString('en-IN')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <span className="text-xs text-gray-500">
-                            {new Date(p.date).toLocaleDateString('en-IN', {
-                              day: 'numeric', month: 'short', year: 'numeric',
-                            })}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={p.status} />
-                        </td>
-                      </tr>
-                    ))}
+                    <tr
+                      key={p.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                          {p.id}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{p.studentName}</p>
+                        <p className="text-[11px] text-gray-500 hidden xs:block">{p.email}</p>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell max-w-[200px]">
+                        <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1">{p.course}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                          ₹{Number(p.amount).toLocaleString('en-IN')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-xs text-gray-500">
+                          {new Date(p.date).toLocaleDateString('en-IN', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                          })}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={p.status} />
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </TableCard>
           </motion.div>
@@ -413,63 +411,63 @@ const PaymentManager = () => {
                 {receiptsLoading
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
                   : filteredReceipts.map((r) => {
-                      const studentName = r.userName || r.user?.name || '—';
-                      const studentEmail = r.userEmail || r.user?.email || '—';
-                      const course = r.courseName || r.course?.title || r.liveCourse?.title || '—';
-                      return (
-                        <tr
-                          key={r._id}
-                          className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-                        >
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                              {r.receiptId || '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{studentName}</p>
-                            <p className="text-[11px] text-gray-500 hidden xs:block">{studentEmail}</p>
-                          </td>
-                          <td className="px-4 py-3 hidden sm:table-cell max-w-[180px]">
-                            <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1">{course}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-sm font-bold text-gray-900 dark:text-white">
-                              ₹{Number(r.amount || 0).toLocaleString('en-IN')}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            <span className="text-xs text-gray-500">
-                              {new Date(r.createdAt).toLocaleDateString('en-IN', {
-                                day: 'numeric', month: 'short', year: 'numeric',
-                              })}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {r.receiptId ? (
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => downloadPdf(r.receiptId, 'download')}
-                                  title="Download PDF"
-                                  className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors"
-                                >
-                                  <FiDownload size={14} />
-                                </button>
-                                <button
-                                  onClick={() => downloadPdf(r.receiptId, 'view')}
-                                  title="View in browser"
-                                  className="p-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                >
-                                  <FiEye size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">No PDF</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    const studentName = r.userName || r.user?.name || '—';
+                    const studentEmail = r.userEmail || r.user?.email || '—';
+                    const course = r.courseName || r.course?.title || r.liveCourse?.title || '—';
+                    return (
+                      <tr
+                        key={r._id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                            {r.receiptId || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{studentName}</p>
+                          <p className="text-[11px] text-gray-500 hidden xs:block">{studentEmail}</p>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell max-w-[180px]">
+                          <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1">{course}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">
+                            ₹{Number(r.amount || 0).toLocaleString('en-IN')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <span className="text-xs text-gray-500">
+                            {new Date(r.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric', month: 'short', year: 'numeric',
+                            })}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.receiptId ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => downloadPdf(r.receiptId, 'download')}
+                                title="Download PDF"
+                                className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors"
+                              >
+                                <FiDownload size={14} />
+                              </button>
+                              <button
+                                onClick={() => downloadPdf(r.receiptId, 'view')}
+                                title="View in browser"
+                                className="p-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                              >
+                                <FiEye size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">No PDF</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </TableCard>
           </motion.div>

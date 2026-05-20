@@ -2,6 +2,7 @@ import express from 'express';
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, cloudinary } from '../config/cloudinary.js';
 import PDFDocument from 'pdfkit';
+import ExcelJS from 'exceljs';
 import Course from '../models/Course.js';
 import LiveCourse from '../models/LiveCourse.js';
 import ResourcePersonExpense from '../models/ResourcePersonExpense.js';
@@ -532,64 +533,43 @@ router.get('/financial/export/csv', protect, authorize('admin'), async (req, res
   }
 });
 
-router.get('/financial/export/pdf', protect, authorize('admin'), async (req, res) => {
+router.get('/financial/export/excel', protect, authorize('admin'), async (req, res) => {
   try {
     const { type } = req.query;
     if (type !== 'courses-summary') {
-      return res.status(400).send('Unsupported PDF export type');
+      return res.status(400).send('Unsupported Excel export type');
     }
 
-    const [data, totals] = await Promise.all([
-      getAllCoursesFinancialSummary(),
-      getPlatformFinancialSummary(),
-    ]);
+    const data = await getAllCoursesFinancialSummary();
 
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="Financial_Report.pdf"');
-    doc.pipe(res);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Financial Summary');
 
-    // Title
-    doc.fontSize(20).font('Helvetica-Bold').text('Financial Summary Report', { align: 'center' });
-    doc.moveDown(0.3);
-    doc.fontSize(11).font('Helvetica').text(`Generated: ${new Date().toLocaleString('en-IN')}`, { align: 'center' });
-    doc.moveDown(1.5);
-
-    // Platform totals
-    doc.fontSize(13).font('Helvetica-Bold').text('Platform Totals');
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
-    doc.moveDown(0.4);
-    doc.fontSize(11).font('Helvetica');
-    const fmt = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
-    const tRows = [
-      ['Total Revenue',    fmt(totals.totalRevenue)],
-      ['Total Expenses',   fmt(totals.totalExpenses)],
-      ['Total Profit',     fmt(totals.totalProfit)],
-      ['Total Courses',    String(totals.courseCount)],
+    sheet.columns = [
+      { header: 'Course Name',        key: 'courseName',        width: 30 },
+      { header: 'Type',               key: 'courseType',        width: 12 },
+      { header: 'Total Enrollments',  key: 'totalEnrollments',  width: 18 },
+      { header: 'Paid',               key: 'paidEnrollments',   width: 12 },
+      { header: 'Free',               key: 'freeEnrollments',   width: 12 },
+      { header: 'Revenue (INR)',      key: 'revenue',           width: 18 },
+      { header: 'Expenses (INR)',     key: 'expenses',          width: 18 },
+      { header: 'Profit (INR)',       key: 'profit',            width: 18 },
     ];
-    tRows.forEach(([label, value]) => {
-      doc.font('Helvetica-Bold').text(label + ':', { continued: true, width: 200 });
-      doc.font('Helvetica').text('  ' + value);
-    });
-    doc.moveDown(1.5);
 
-    // Per-course section
-    doc.fontSize(13).font('Helvetica-Bold').text('Course Breakdown');
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
-    doc.moveDown(0.4);
+    data.forEach((row) => sheet.addRow(row));
 
-    data.forEach((course, i) => {
-      if (i > 0) doc.moveDown(0.5);
-      doc.fontSize(11).font('Helvetica-Bold').text(course.courseName);
-      doc.fontSize(9).font('Helvetica').fillColor('#6b7280')
-        .text(`Type: ${course.courseType.toUpperCase()} | Status: ${course.courseStatus} | Enrollments: ${course.totalEnrollments}`);
-      doc.fillColor('#111827')
-        .text(`Revenue: ${fmt(course.revenue)}  |  Expenses: ${fmt(course.expenses)}  |  Profit: ${fmt(course.profit)}`);
-    });
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="Financial_Summary.xlsx"'
+    );
 
-    doc.end();
+    await workbook.xlsx.write(res);
   } catch (error) {
-    if (!res.headersSent) res.status(500).send('PDF Export failed');
+    if (!res.headersSent) res.status(500).send('Excel Export failed');
   }
 });
 

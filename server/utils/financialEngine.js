@@ -7,12 +7,12 @@ import CourseOtherExpense from '../models/CourseOtherExpense.js';
 import RefundRecord from '../models/RefundRecord.js';
 
 /**
- * Safely parse a float to 2 decimal places to avoid floating point issues
+ * Safely round a float to 2 decimal places to prevent floating point drift.
  */
 const safeMoney = (val) => Number.parseFloat(Number(val || 0).toFixed(2));
 
 /**
- * Build match criteria for a specific course
+ * Build a Mongoose match object for a specific course reference.
  */
 const getCourseMatch = (courseId, courseType) => {
   if (courseType === 'live') {
@@ -22,7 +22,19 @@ const getCourseMatch = (courseId, courseType) => {
 };
 
 /**
- * Get financial summary for a specific course
+ * Compute the complete financial summary for a single course.
+ * All arithmetic is done server-side; never trust the client to compute these.
+ *
+ * Formula:
+ *   Gross Revenue   = sum(amount)  for paid enrollments (actual cash received)
+ *   Discount Total  = sum(discountAmount) for paid enrollments (informational)
+ *   Refund Total    = sum(refunds)
+ *   Net Revenue     = Gross Revenue − Refund Total
+ *   RP Expense      = sum(amount) for PAID resource-person expenses
+ *   Other Expenses  = sum(amount) for all other-course expenses
+ *   Total Expenses  = RP Expense + Other Expenses
+ *   Final Profit    = Net Revenue − Total Expenses
+ *   Profit Margin % = (Final Profit / Gross Revenue) × 100
  */
 export const getCourseFinancialSummary = async (courseId, courseType) => {
   if (!courseId || !courseType) {
@@ -31,192 +43,276 @@ export const getCourseFinancialSummary = async (courseId, courseType) => {
 
   const courseMatch = getCourseMatch(courseId, courseType);
 
-  // Get course details
-  const courseDetails = courseType === 'live' 
-    ? await LiveCourse.findById(courseId).select('title status price')
-    : await Course.findById(courseId).select('title status price');
-    
+  // Load course metadata + all aggregations in parallel
+  const [
+    courseDetails,
+    enrollmentsAggr,
+    refundsAggr,
+    rpExpenseAggr,
+    rpPendingAggr,
+    otherExpenseAggr,
+    lastPaymentAggr,
+  ] = await Promise.all([
+    courseType === 'live'
+      ? LiveCourse.findById(courseId).select('title status price').lean()
+      : Course.findById(courseId).select('title status price').lean(),
+
+    Enrollment.aggregate([
+      { $match: { ...courseMatch, status: { $in: ['active', 'completed'] } } },
+      {
+        $group: {
+          _id: null,
+          totalEnrollments: { $sum: 1 },
+          paidEnrollments:  { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] },  1, 0] } },
+          freeEnrollments:  { $sum: { $cond: [{ $eq: ['$enrollmentType', 'free'] },  1, 0] } },
+          adminEnrollments: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'admin'] }, 1, 0] } },
+          autoEnrollments:  { $sum: { $cond: [{ $eq: ['$enrollmentType', 'auto'] },  1, 0] } },
+          grossRevenue:     { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, '$amount',         0] } },
+          totalDiscounts:   { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, '$discountAmount', 0] } },
+        },
+      },
+    ]),
+
+    RefundRecord.aggregate([
+      { $match: courseMatch },
+      { $group: { _id: null, totalRefunded: { $sum: '$amount' } } },
+    ]),
+
+    // Only PAID resource-person expenses count as realised costs
+    ResourcePersonExpense.aggregate([
+      { $match: { ...courseMatch, status: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+
+    // Pending resource-person expenses (committed but not yet disbursed)
+    ResourcePersonExpense.aggregate([
+      { $match: { ...courseMatch, status: 'pending' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+
+    CourseOtherExpense.aggregate([
+      { $match: courseMatch },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+
+    Enrollment.aggregate([
+      { $match: { ...courseMatch, enrollmentType: 'paid', status: { $in: ['active', 'completed'] } } },
+      { $group: { _id: null, lastPaymentDate: { $max: '$createdAt' } } },
+    ]),
+  ]);
+
   if (!courseDetails) {
     throw new Error('Course not found');
   }
 
-  // 1. Enrollment stats
-  const enrollmentsAggr = await Enrollment.aggregate([
-    { $match: { ...courseMatch, status: { $in: ['active', 'completed'] } } },
-    {
-      $group: {
-        _id: null,
-        totalEnrollments: { $sum: 1 },
-        paidEnrollments: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, 1, 0] } },
-        freeEnrollments: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'free'] }, 1, 0] } },
-        adminEnrollments: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'admin'] }, 1, 0] } },
-        autoEnrollments: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'auto'] }, 1, 0] } },
-        grossRevenue: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, '$amount', 0] } },
-        totalDiscounts: { $sum: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, '$discountAmount', 0] } },
-        lastPaymentDate: { $max: { $cond: [{ $eq: ['$enrollmentType', 'paid'] }, '$createdAt', null] } }
-      }
-    }
-  ]);
-
-  const enrollStats = enrollmentsAggr[0] || {
-    totalEnrollments: 0, paidEnrollments: 0, freeEnrollments: 0, adminEnrollments: 0, autoEnrollments: 0,
-    grossRevenue: 0, totalDiscounts: 0, lastPaymentDate: null
+  const es = enrollmentsAggr[0] || {
+    totalEnrollments: 0, paidEnrollments: 0, freeEnrollments: 0,
+    adminEnrollments: 0, autoEnrollments: 0,
+    grossRevenue: 0, totalDiscounts: 0,
   };
 
-  // 2. Refunds
-  const refundsAggr = await RefundRecord.aggregate([
-    { $match: courseMatch },
-    { $group: { _id: null, totalRefunded: { $sum: '$amount' } } }
-  ]);
-  const totalRefunded = refundsAggr[0]?.totalRefunded || 0;
-
-  // 3. Resource Person Expenses (only PAID ones)
-  const rpExpenseAggr = await ResourcePersonExpense.aggregate([
-    { $match: { ...courseMatch, status: 'paid' } },
-    { $group: { _id: null, total: { $sum: '$amount' } } }
-  ]);
-  const resourcePersonExpense = rpExpenseAggr[0]?.total || 0;
-
-  // 4. Other Expenses
-  const otherExpenseAggr = await CourseOtherExpense.aggregate([
-    { $match: courseMatch },
-    { $group: { _id: null, total: { $sum: '$amount' } } }
-  ]);
-  const otherExpenses = otherExpenseAggr[0]?.total || 0;
-
-  // 5. Calculations
-  const grossRevenue = safeMoney(enrollStats.grossRevenue);
-  const netRevenue = safeMoney(grossRevenue - totalRefunded);
-  const totalExpenses = safeMoney(resourcePersonExpense + otherExpenses);
-  const finalProfit = safeMoney(netRevenue - totalExpenses);
-  
-  let profitMarginPercent = 0;
-  if (grossRevenue > 0) {
-    profitMarginPercent = safeMoney((finalProfit / grossRevenue) * 100);
-  }
-
-  return {
-    courseId,
-    courseName: courseDetails.title,
-    courseType,
-    courseStatus: courseDetails.status,
-    coursePrice: courseDetails.price || 0,
-    totalEnrollments: enrollStats.totalEnrollments,
-    paidEnrollments: enrollStats.paidEnrollments,
-    freeEnrollments: enrollStats.freeEnrollments,
-    adminEnrollments: enrollStats.adminEnrollments,
-    autoEnrollments: enrollStats.autoEnrollments,
-    grossRevenue,
-    totalDiscounts: safeMoney(enrollStats.totalDiscounts),
-    totalRefunded: safeMoney(totalRefunded),
-    netRevenue,
-    resourcePersonExpense: safeMoney(resourcePersonExpense),
-    otherExpenses: safeMoney(otherExpenses),
-    totalExpenses,
-    finalProfit,
-    profitMarginPercent,
-    lastPaymentDate: enrollStats.lastPaymentDate
-  };
-};
-
-/**
- * Get summary for all courses
- */
-export const getAllCoursesFinancialSummary = async () => {
-  const [courses, liveCourses] = await Promise.all([
-    Course.find().select('_id'),
-    LiveCourse.find().select('_id')
-  ]);
-
-  const allSummaries = [];
-  
-  // Process sequentially to avoid DB overload (could be optimized with a single massive aggregation)
-  for (const c of courses) {
-    try {
-      allSummaries.push(await getCourseFinancialSummary(c._id, 'self-paced'));
-    } catch (err) {
-      console.warn(`Could not compute summary for course ${c._id}: ${err.message}`);
-    }
-  }
-
-  for (const c of liveCourses) {
-    try {
-      allSummaries.push(await getCourseFinancialSummary(c._id, 'live'));
-    } catch (err) {
-      console.warn(`Could not compute summary for live course ${c._id}: ${err.message}`);
-    }
-  }
-
-  return allSummaries;
-};
-
-/**
- * Get platform wide totals
- */
-export const getPlatformFinancialSummary = async () => {
-  const allSummaries = await getAllCoursesFinancialSummary();
-  
-  let totalGrossRevenue = 0;
-  let totalNetRevenue = 0;
-  let totalExpenses = 0;
-  let totalProfit = 0;
-  let totalRefunds = 0;
-  let totalDiscounts = 0;
-  
-  allSummaries.forEach(s => {
-    totalGrossRevenue += s.grossRevenue;
-    totalNetRevenue += s.netRevenue;
-    totalExpenses += s.totalExpenses;
-    totalProfit += s.finalProfit;
-    totalRefunds += s.totalRefunded;
-    totalDiscounts += s.totalDiscounts;
-  });
-
-  const avgProfitMargin = totalGrossRevenue > 0 
-    ? safeMoney((totalProfit / totalGrossRevenue) * 100) 
+  const grossRevenue        = safeMoney(es.grossRevenue);
+  const totalDiscounts      = safeMoney(es.totalDiscounts);
+  const totalRefunded       = safeMoney(refundsAggr[0]?.totalRefunded || 0);
+  const netRevenue          = safeMoney(grossRevenue - totalRefunded);
+  const resourcePersonExpense = safeMoney(rpExpenseAggr[0]?.total  || 0);
+  const pendingRPExpense    = safeMoney(rpPendingAggr[0]?.total  || 0);
+  const otherExpenses       = safeMoney(otherExpenseAggr[0]?.total || 0);
+  const totalExpenses       = safeMoney(resourcePersonExpense + otherExpenses);
+  const finalProfit         = safeMoney(netRevenue - totalExpenses);
+  const profitMarginPercent = grossRevenue > 0
+    ? safeMoney((finalProfit / grossRevenue) * 100)
     : 0;
 
   return {
-    totalGrossRevenue: safeMoney(totalGrossRevenue),
-    totalNetRevenue: safeMoney(totalNetRevenue),
-    totalExpenses: safeMoney(totalExpenses),
-    totalProfit: safeMoney(totalProfit),
-    totalRefunds: safeMoney(totalRefunds),
-    totalDiscounts: safeMoney(totalDiscounts),
-    courseCount: allSummaries.length,
-    avgProfitMargin
+    courseId:               String(courseId),
+    courseName:             courseDetails.title,
+    courseType,
+    courseStatus:           courseDetails.status,
+    coursePrice:            courseDetails.price || 0,
+    totalEnrollments:       es.totalEnrollments,
+    paidEnrollments:        es.paidEnrollments,
+    freeEnrollments:        es.freeEnrollments,
+    adminEnrollments:       es.adminEnrollments,
+    autoEnrollments:        es.autoEnrollments,
+    grossRevenue,
+    totalDiscounts,
+    totalRefunded,
+    netRevenue,
+    resourcePersonExpense,
+    pendingRPExpense,
+    otherExpenses,
+    totalExpenses,
+    finalProfit,
+    profitMarginPercent,
+    lastPaymentDate:        lastPaymentAggr[0]?.lastPaymentDate || null,
   };
 };
 
 /**
- * Get expense breakdown for a course (or platform if courseId is null)
+ * Get financial summaries for ALL courses (self-paced + live) in parallel.
+ * Uses Promise.allSettled so a single bad course never blocks the whole response.
+ */
+export const getAllCoursesFinancialSummary = async () => {
+  const [courses, liveCourses] = await Promise.all([
+    Course.find().select('_id').lean(),
+    LiveCourse.find().select('_id').lean(),
+  ]);
+
+  const tasks = [
+    ...courses.map((c)  => getCourseFinancialSummary(c._id, 'self-paced')),
+    ...liveCourses.map((c) => getCourseFinancialSummary(c._id, 'live')),
+  ];
+
+  const results = await Promise.allSettled(tasks);
+
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .map((r) => r.value);
+};
+
+/**
+ * Platform-wide totals derived from all course summaries.
+ */
+export const getPlatformFinancialSummary = async () => {
+  const all = await getAllCoursesFinancialSummary();
+
+  const totals = all.reduce(
+    (acc, s) => {
+      acc.totalGrossRevenue += s.grossRevenue;
+      acc.totalNetRevenue   += s.netRevenue;
+      acc.totalExpenses     += s.totalExpenses;
+      acc.totalProfit       += s.finalProfit;
+      acc.totalRefunds      += s.totalRefunded;
+      acc.totalDiscounts    += s.totalDiscounts;
+      acc.pendingRPExpense  += s.pendingRPExpense;
+      return acc;
+    },
+    {
+      totalGrossRevenue: 0,
+      totalNetRevenue:   0,
+      totalExpenses:     0,
+      totalProfit:       0,
+      totalRefunds:      0,
+      totalDiscounts:    0,
+      pendingRPExpense:  0,
+    }
+  );
+
+  const avgProfitMargin = totals.totalGrossRevenue > 0
+    ? safeMoney((totals.totalProfit / totals.totalGrossRevenue) * 100)
+    : 0;
+
+  return {
+    totalGrossRevenue: safeMoney(totals.totalGrossRevenue),
+    totalNetRevenue:   safeMoney(totals.totalNetRevenue),
+    totalExpenses:     safeMoney(totals.totalExpenses),
+    totalProfit:       safeMoney(totals.totalProfit),
+    totalRefunds:      safeMoney(totals.totalRefunds),
+    totalDiscounts:    safeMoney(totals.totalDiscounts),
+    pendingRPExpense:  safeMoney(totals.pendingRPExpense),
+    courseCount:       all.length,
+    avgProfitMargin,
+  };
+};
+
+/**
+ * Revenue + expense + profit trend by month (last N months).
+ */
+export const getCourseRevenueTrend = async (courseId = null, courseType = null, months = 12) => {
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - (months - 1));
+  startDate.setDate(1);
+  startDate.setHours(0, 0, 0, 0);
+
+  let enrollMatch  = { status: { $in: ['active', 'completed'] }, enrollmentType: 'paid', createdAt: { $gte: startDate } };
+  let rpMatch      = { status: 'paid', paymentDate: { $gte: startDate } };
+  let otherMatch   = { date: { $gte: startDate } };
+  let refundMatch  = { refundDate: { $gte: startDate } };
+
+  if (courseId && courseType) {
+    const cm = getCourseMatch(courseId, courseType);
+    enrollMatch  = { ...enrollMatch,  ...cm };
+    rpMatch      = { ...rpMatch,      ...cm };
+    otherMatch   = { ...otherMatch,   ...cm };
+    refundMatch  = { ...refundMatch,  ...cm };
+  }
+
+  const FMT = '%Y-%m';
+
+  const [revenueAggr, refundsAggr, rpAggr, otherAggr] = await Promise.all([
+    Enrollment.aggregate([
+      { $match: enrollMatch },
+      { $group: { _id: { $dateToString: { format: FMT, date: '$createdAt' } }, revenue: { $sum: '$amount' } } },
+    ]),
+    RefundRecord.aggregate([
+      { $match: refundMatch },
+      { $group: { _id: { $dateToString: { format: FMT, date: '$refundDate' } }, refund: { $sum: '$amount' } } },
+    ]),
+    ResourcePersonExpense.aggregate([
+      { $match: rpMatch },
+      { $group: { _id: { $dateToString: { format: FMT, date: '$paymentDate' } }, expense: { $sum: '$amount' } } },
+    ]),
+    CourseOtherExpense.aggregate([
+      { $match: otherMatch },
+      { $group: { _id: { $dateToString: { format: FMT, date: '$date' } }, expense: { $sum: '$amount' } } },
+    ]),
+  ]);
+
+  // Seed all months with zeros
+  const monthMap = {};
+  const cursor = new Date(startDate);
+  const now    = new Date();
+  while (cursor <= now) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    monthMap[key] = { month: key, revenue: 0, expenses: 0, profit: 0, refunds: 0 };
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  revenueAggr.forEach((r) => { if (monthMap[r._id]) monthMap[r._id].revenue  += r.revenue;  });
+  refundsAggr.forEach((r) => { if (monthMap[r._id]) monthMap[r._id].refunds  += r.refund;   });
+  rpAggr.forEach((e)      => { if (monthMap[e._id]) monthMap[e._id].expenses += e.expense;  });
+  otherAggr.forEach((e)   => { if (monthMap[e._id]) monthMap[e._id].expenses += e.expense;  });
+
+  return Object.values(monthMap)
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((m) => ({
+      ...m,
+      revenue:  safeMoney(m.revenue),
+      expenses: safeMoney(m.expenses),
+      refunds:  safeMoney(m.refunds),
+      profit:   safeMoney(m.revenue - m.refunds - m.expenses),
+    }));
+};
+
+/**
+ * Expense category breakdown (RP + named categories).
  */
 export const getCourseExpenseBreakdown = async (courseId = null, courseType = null) => {
-  let rpMatch = { status: 'paid' };
+  let rpMatch    = { status: 'paid' };
   let otherMatch = {};
 
   if (courseId && courseType) {
-    const courseMatch = getCourseMatch(courseId, courseType);
-    rpMatch = { ...rpMatch, ...courseMatch };
-    otherMatch = { ...courseMatch };
+    const cm = getCourseMatch(courseId, courseType);
+    rpMatch    = { ...rpMatch,    ...cm };
+    otherMatch = { ...otherMatch, ...cm };
   }
 
   const [rpAggr, otherAggr] = await Promise.all([
     ResourcePersonExpense.aggregate([
       { $match: rpMatch },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
+      { $group: { _id: null, total: { $sum: '$amount' } } },
     ]),
     CourseOtherExpense.aggregate([
       { $match: otherMatch },
-      { $group: { _id: '$category', total: { $sum: '$amount' } } }
-    ])
+      { $group: { _id: '$category', total: { $sum: '$amount' } } },
+    ]),
   ]);
 
   const resourcePersonTotal = safeMoney(rpAggr[0]?.total || 0);
-  
   const categories = {};
   let otherTotal = 0;
-  otherAggr.forEach(cat => {
+  otherAggr.forEach((cat) => {
     const amt = safeMoney(cat.total);
     categories[cat._id] = amt;
     otherTotal += amt;
@@ -225,130 +321,29 @@ export const getCourseExpenseBreakdown = async (courseId = null, courseType = nu
   return {
     resourcePersonTotal,
     categories,
-    totalExpenses: safeMoney(resourcePersonTotal + otherTotal)
+    totalExpenses: safeMoney(resourcePersonTotal + otherTotal),
   };
 };
 
 /**
- * Get revenue trend (monthly)
- */
-export const getCourseRevenueTrend = async (courseId = null, courseType = null, months = 12) => {
-  // Compute start date based on months
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - (months - 1));
-  startDate.setDate(1);
-  startDate.setHours(0, 0, 0, 0);
-
-  let enrollMatch = { 
-    status: { $in: ['active', 'completed'] },
-    enrollmentType: 'paid',
-    createdAt: { $gte: startDate }
-  };
-  let rpMatch = { status: 'paid', paymentDate: { $gte: startDate } };
-  let otherMatch = { date: { $gte: startDate } };
-  let refundMatch = { refundDate: { $gte: startDate } };
-
-  if (courseId && courseType) {
-    const courseMatch = getCourseMatch(courseId, courseType);
-    enrollMatch = { ...enrollMatch, ...courseMatch };
-    rpMatch = { ...rpMatch, ...courseMatch };
-    otherMatch = { ...otherMatch, ...courseMatch };
-    refundMatch = { ...refundMatch, ...courseMatch };
-  }
-
-  // Aggregate revenue (createdAt)
-  const revenueAggr = await Enrollment.aggregate([
-    { $match: enrollMatch },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-        revenue: { $sum: '$amount' }
-      }
-    }
-  ]);
-
-  // Aggregate refunds
-  const refundsAggr = await RefundRecord.aggregate([
-    { $match: refundMatch },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$refundDate' } },
-        refund: { $sum: '$amount' }
-      }
-    }
-  ]);
-
-  // Aggregate RP expenses
-  const rpAggr = await ResourcePersonExpense.aggregate([
-    { $match: rpMatch },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$paymentDate' } },
-        expense: { $sum: '$amount' }
-      }
-    }
-  ]);
-
-  // Aggregate Other expenses
-  const otherAggr = await CourseOtherExpense.aggregate([
-    { $match: otherMatch },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$date' } },
-        expense: { $sum: '$amount' }
-      }
-    }
-  ]);
-
-  // Combine into a month map
-  const monthMap = {};
-  
-  // Initialize last N months with zero
-  const current = new Date(startDate);
-  const now = new Date();
-  while (current <= now) {
-    const mStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-    monthMap[mStr] = { month: mStr, revenue: 0, expenses: 0, profit: 0, refunds: 0 };
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  revenueAggr.forEach(r => { if (monthMap[r._id]) monthMap[r._id].revenue += r.revenue; });
-  refundsAggr.forEach(r => { if (monthMap[r._id]) monthMap[r._id].refunds += r.refund; });
-  rpAggr.forEach(e => { if (monthMap[e._id]) monthMap[e._id].expenses += e.expense; });
-  otherAggr.forEach(e => { if (monthMap[e._id]) monthMap[e._id].expenses += e.expense; });
-
-  // Calculate net profit
-  Object.values(monthMap).forEach(m => {
-    m.revenue = safeMoney(m.revenue);
-    m.expenses = safeMoney(m.expenses);
-    m.refunds = safeMoney(m.refunds);
-    m.profit = safeMoney(m.revenue - m.refunds - m.expenses);
-  });
-
-  return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
-};
-
-/**
- * Get payment distribution
+ * Enrollment type distribution across the platform or for a single course.
  */
 export const getPaymentDistribution = async (courseId = null, courseType = null) => {
   let match = { status: { $in: ['active', 'completed'] } };
-  
   if (courseId && courseType) {
     match = { ...match, ...getCourseMatch(courseId, courseType) };
   }
 
   const distribution = await Enrollment.aggregate([
     { $match: match },
-    { $group: { _id: '$enrollmentType', count: { $sum: 1 } } }
+    { $group: { _id: '$enrollmentType', count: { $sum: 1 } } },
   ]);
 
   const result = { paid: 0, free: 0, admin: 0, auto: 0, total: 0 };
-  
-  distribution.forEach(d => {
-    const type = d._id || 'unknown';
+  distribution.forEach((d) => {
+    const type = d._id || 'admin';
     if (result[type] !== undefined) {
-      result[type] = d.count;
+      result[type]  = d.count;
       result.total += d.count;
     }
   });

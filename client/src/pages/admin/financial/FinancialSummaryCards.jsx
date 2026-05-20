@@ -1,185 +1,180 @@
 import { motion } from 'framer-motion';
 import {
-  FiTrendingUp,
-  FiTrendingDown,
-  FiDollarSign,
-  FiPieChart,
-  FiPercent,
-  FiMinusCircle,
+  FiTrendingUp, FiTrendingDown, FiDollarSign,
+  FiPieChart, FiPercent, FiMinusCircle,
+  FiUsers, FiAlertCircle,
 } from 'react-icons/fi';
 import { cn } from '../../../lib/utils';
 
-/**
- * Formats a number as INR currency string.
- * @param {number} value
- * @returns {string}
- */
 export const formatINR = (value) => {
   if (value == null || isNaN(value)) return '₹0';
-  return `₹${Number(value).toLocaleString('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+  const n = Number(value);
+  if (Math.abs(n) >= 10_00_000)
+    return `₹${(n / 10_00_000).toFixed(2)}L`;
+  if (Math.abs(n) >= 1000)
+    return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `₹${n.toFixed(2)}`;
 };
 
-/**
- * Formats a percentage value.
- * @param {number} value
- * @returns {string}
- */
+export const formatINRFull = (value) => {
+  if (value == null || isNaN(value)) return '₹0';
+  return `₹${Number(value).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+};
+
 export const formatPercent = (value) => {
   if (value == null || isNaN(value)) return '0%';
   return `${Number(value).toFixed(1)}%`;
 };
 
-const CARD_CONFIG = [
+const CARDS = [
   {
     key: 'totalGrossRevenue',
     label: 'Gross Revenue',
+    sublabel: 'Total cash received',
     icon: FiDollarSign,
     format: formatINR,
-    color: 'from-emerald-500 to-teal-600',
-    bgLight: 'bg-emerald-50 dark:bg-emerald-900/20',
-    textColor: 'text-emerald-600 dark:text-emerald-400',
+    gradient: 'from-emerald-500 to-teal-600',
+    bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+    text: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    key: 'totalNetRevenue',
+    label: 'Net Revenue',
+    sublabel: 'After refunds',
+    icon: FiTrendingUp,
+    format: formatINR,
+    gradient: 'from-blue-500 to-indigo-600',
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    text: 'text-blue-600 dark:text-blue-400',
+    dynamic: true,
   },
   {
     key: 'totalProfit',
     label: 'Net Profit',
+    sublabel: 'Revenue − Expenses',
     icon: FiTrendingUp,
     format: formatINR,
-    color: 'from-blue-500 to-indigo-600',
-    bgLight: 'bg-blue-50 dark:bg-blue-900/20',
-    textColor: 'text-blue-600 dark:text-blue-400',
-    dynamicColor: true, // green if positive, red if negative
+    gradient: 'from-violet-500 to-purple-600',
+    bg: 'bg-violet-50 dark:bg-violet-900/20',
+    text: 'text-violet-600 dark:text-violet-400',
+    dynamic: true,
   },
   {
     key: 'totalExpenses',
     label: 'Total Expenses',
+    sublabel: 'RP + other costs',
     icon: FiMinusCircle,
     format: formatINR,
-    color: 'from-amber-500 to-orange-600',
-    bgLight: 'bg-amber-50 dark:bg-amber-900/20',
-    textColor: 'text-amber-600 dark:text-amber-400',
-  },
-  {
-    key: 'avgProfitMargin',
-    label: 'Avg. Profit Margin',
-    icon: FiPercent,
-    format: formatPercent,
-    color: 'from-violet-500 to-purple-600',
-    bgLight: 'bg-violet-50 dark:bg-violet-900/20',
-    textColor: 'text-violet-600 dark:text-violet-400',
-    dynamicColor: true,
+    gradient: 'from-amber-500 to-orange-600',
+    bg: 'bg-amber-50 dark:bg-amber-900/20',
+    text: 'text-amber-600 dark:text-amber-400',
   },
   {
     key: 'totalRefunds',
     label: 'Total Refunds',
+    sublabel: 'Returned to students',
+    icon: FiAlertCircle,
+    format: formatINR,
+    gradient: 'from-rose-500 to-red-600',
+    bg: 'bg-rose-50 dark:bg-rose-900/20',
+    text: 'text-rose-600 dark:text-rose-400',
+  },
+  {
+    key: 'avgProfitMargin',
+    label: 'Avg. Margin',
+    sublabel: 'Across all courses',
+    icon: FiPercent,
+    format: formatPercent,
+    gradient: 'from-cyan-500 to-sky-600',
+    bg: 'bg-cyan-50 dark:bg-cyan-900/20',
+    text: 'text-cyan-600 dark:text-cyan-400',
+    dynamic: true,
+  },
+  {
+    key: 'totalDiscounts',
+    label: 'Discounts Given',
+    sublabel: 'Coupon savings',
     icon: FiPieChart,
     format: formatINR,
-    color: 'from-rose-500 to-red-600',
-    bgLight: 'bg-rose-50 dark:bg-rose-900/20',
-    textColor: 'text-rose-600 dark:text-rose-400',
+    gradient: 'from-pink-500 to-fuchsia-600',
+    bg: 'bg-pink-50 dark:bg-pink-900/20',
+    text: 'text-pink-600 dark:text-pink-400',
   },
   {
     key: 'courseCount',
-    label: 'Active Courses',
-    icon: FiPieChart,
+    label: 'Courses',
+    sublabel: 'With financial data',
+    icon: FiUsers,
     format: (v) => String(v ?? 0),
-    color: 'from-cyan-500 to-sky-600',
-    bgLight: 'bg-cyan-50 dark:bg-cyan-900/20',
-    textColor: 'text-cyan-600 dark:text-cyan-400',
+    gradient: 'from-slate-500 to-gray-600',
+    bg: 'bg-slate-50 dark:bg-slate-900/20',
+    text: 'text-slate-600 dark:text-slate-400',
   },
 ];
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06 },
-  },
+  show: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 16, scale: 0.97 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', bounce: 0.2, duration: 0.5 } },
+  hidden: { opacity: 0, y: 14, scale: 0.97 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', bounce: 0.2, duration: 0.45 } },
 };
 
-/**
- * Platform-level financial summary cards.
- * @param {{ data: object, loading: boolean }} props
- */
-const FinancialSummaryCards = ({ data, loading }) => {
-  return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4"
-    >
-      {CARD_CONFIG.map((card) => {
-        const rawValue = data?.[card.key] ?? 0;
-        const displayValue = loading ? '—' : card.format(rawValue);
+const FinancialSummaryCards = ({ data, loading }) => (
+  <motion.div
+    variants={containerVariants}
+    initial="hidden"
+    animate="show"
+    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3"
+  >
+    {CARDS.map((card) => {
+      const raw    = data?.[card.key] ?? 0;
+      const disp   = loading ? '—' : card.format(raw);
+      const isNeg  = card.dynamic && !loading && raw < 0;
+      const isPos  = card.dynamic && !loading && raw > 0;
 
-        let iconColor = card.textColor;
-        let valueColor = 'text-gray-900 dark:text-white';
-        if (card.dynamicColor && !loading) {
-          if (rawValue > 0) {
-            iconColor = 'text-emerald-500 dark:text-emerald-400';
-            valueColor = 'text-emerald-700 dark:text-emerald-400';
-          } else if (rawValue < 0) {
-            iconColor = 'text-red-500 dark:text-red-400';
-            valueColor = 'text-red-700 dark:text-red-400';
-          }
-        }
+      const valueColor = isNeg
+        ? 'text-red-600 dark:text-red-400'
+        : isPos
+        ? 'text-emerald-700 dark:text-emerald-300'
+        : 'text-gray-900 dark:text-white';
 
-        const IconComponent = card.dynamicColor && rawValue < 0 ? FiTrendingDown : card.icon;
+      const Icon = isNeg ? FiTrendingDown : card.icon;
 
-        return (
-          <motion.div
-            key={card.key}
-            variants={itemVariants}
-            className={cn(
-              'relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800',
-              'bg-white dark:bg-gray-900 p-4 lg:p-5',
-              'hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50',
-              'transition-shadow duration-300'
-            )}
-          >
-            {/* Gradient accent top line */}
-            <div
-              className={cn(
-                'absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r',
-                card.color
-              )}
-            />
+      return (
+        <motion.div
+          key={card.key}
+          variants={itemVariants}
+          className={cn(
+            'relative overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800',
+            'bg-white dark:bg-gray-900 p-3.5 lg:p-4',
+            'hover:shadow-md transition-shadow duration-300'
+          )}
+        >
+          <div className={cn('absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r', card.gradient)} />
 
-            <div className="flex items-start justify-between mb-3">
-              <div
-                className={cn(
-                  'flex items-center justify-center w-9 h-9 rounded-xl',
-                  card.bgLight
-                )}
-              >
-                <IconComponent size={16} className={iconColor} />
-              </div>
-            </div>
+          <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center mb-3', card.bg)}>
+            <Icon size={14} className={cn(isNeg ? 'text-red-500' : isPos ? 'text-emerald-500' : card.text)} />
+          </div>
 
-            <div className="space-y-1">
-              <p className={cn(
-                'text-lg lg:text-xl font-bold tracking-tight truncate',
-                loading ? 'animate-pulse text-gray-300 dark:text-gray-700' : valueColor
-              )}>
-                {displayValue}
-              </p>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {card.label}
-              </p>
-            </div>
-          </motion.div>
-        );
-      })}
-    </motion.div>
-  );
-};
+          <div className="space-y-0.5">
+            <p className={cn(
+              'text-base lg:text-lg font-bold tracking-tight truncate',
+              loading ? 'animate-pulse text-gray-300 dark:text-gray-700 bg-gray-200 dark:bg-gray-700 rounded h-6 w-3/4' : valueColor
+            )}>
+              {!loading && disp}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 leading-tight">
+              {card.label}
+            </p>
+            <p className="text-[9px] text-gray-400 dark:text-gray-600 truncate">{card.sublabel}</p>
+          </div>
+        </motion.div>
+      );
+    })}
+  </motion.div>
+);
 
 export default FinancialSummaryCards;

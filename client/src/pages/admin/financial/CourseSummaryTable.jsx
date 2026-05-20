@@ -4,7 +4,7 @@ import {
   FiChevronDown, FiSearch, FiArrowUp, FiArrowDown, FiFilter,
 } from 'react-icons/fi';
 import { cn } from '../../../lib/utils';
-import { formatINR, formatPercent } from './FinancialSummaryCards';
+import { formatINR } from './FinancialSummaryCards';
 
 // ─── Expanded detail row ──────────────────────────────────────────────────────
 const CourseDetailRow = ({ course, colSpan }) => {
@@ -13,25 +13,13 @@ const CourseDetailRow = ({ course, colSpan }) => {
     { label: 'Free Enroll.',   value: course.freeEnrollments  ?? 0 },
     { label: 'Admin Enroll.',  value: course.adminEnrollments ?? 0 },
     { label: 'Course Price',   value: formatINR(course.coursePrice) },
-    { label: 'Gross Rev.',     value: formatINR(course.grossRevenue) },
-    { label: 'Discounts',      value: formatINR(course.totalDiscounts) },
-    { label: 'Refunds',        value: formatINR(course.totalRefunded) },
-    { label: 'Net Revenue',    value: formatINR(course.netRevenue) },
-    { label: 'RP Expenses',    value: formatINR(course.resourcePersonExpense) },
-    { label: 'Pending RP',     value: formatINR(course.pendingRPExpense || 0) },
-    { label: 'Other Exp.',     value: formatINR(course.otherExpenses) },
-    { label: 'Total Exp.',     value: formatINR(course.totalExpenses) },
+    { label: 'Revenue',        value: formatINR(course.revenue) },
+    { label: 'Expenses',       value: formatINR(course.expenses) },
     {
-      label: 'Final Profit',
-      value: formatINR(course.finalProfit),
+      label: 'Profit',
+      value: formatINR(course.profit),
       isHighlight: true,
-      isNegative: course.finalProfit < 0,
-    },
-    {
-      label: 'Profit Margin',
-      value: formatPercent(course.profitMarginPercent),
-      isHighlight: true,
-      isNegative: course.profitMarginPercent < 0,
+      isNegative: course.profit < 0,
     },
     {
       label: 'Last Payment',
@@ -126,7 +114,7 @@ const PAGE_SIZE = 15;
 
 const CourseSummaryTable = ({ courses = [], loading }) => {
   const [search,     setSearch]     = useState('');
-  const [sortField,  setSortField]  = useState('grossRevenue');
+  const [sortField,  setSortField]  = useState('revenue');
   const [sortDir,    setSortDir]    = useState('desc');
   const [expandedId, setExpandedId] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -222,17 +210,16 @@ const CourseSummaryTable = ({ courses = [], loading }) => {
               <SortTh field="courseName"        label="Course"     {...sortProps} />
               <th className="px-4 py-3 hidden lg:table-cell">Type</th>
               <SortTh field="totalEnrollments"  label="Enroll."    {...sortProps} />
-              <SortTh field="grossRevenue"      label="Revenue"    {...sortProps} />
-              <SortTh field="totalExpenses"     label="Expenses"   {...sortProps} className="hidden md:table-cell" />
-              <SortTh field="finalProfit"       label="Profit"     {...sortProps} />
-              <SortTh field="profitMarginPercent" label="Margin"   {...sortProps} className="hidden xl:table-cell" />
+              <SortTh field="revenue"           label="Revenue"    {...sortProps} />
+              <SortTh field="expenses"          label="Expenses"   {...sortProps} className="hidden md:table-cell" />
+              <SortTh field="profit"            label="Profit"     {...sortProps} />
               <th className="px-4 py-3 hidden xl:table-cell">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-gray-800/60">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-14 text-center">
+                <td colSpan={8} className="py-14 text-center">
                   <FiFilter className="mx-auto mb-2 text-gray-300 dark:text-gray-700" size={26} />
                   <p className="text-sm text-gray-400 dark:text-gray-500">
                     {search ? 'No courses match your search.' : 'No course financial data available yet.'}
@@ -272,23 +259,20 @@ const CourseSummaryTable = ({ courses = [], loading }) => {
                         {course.totalEnrollments ?? 0}
                       </td>
                       <td className="px-4 py-3 font-bold text-gray-900 dark:text-white text-sm">
-                        {formatINR(course.grossRevenue)}
+                        {formatINR(course.revenue)}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell text-sm text-gray-600 dark:text-gray-400">
-                        {formatINR(course.totalExpenses)}
+                        {formatINR(course.expenses)}
                       </td>
                       <td className="px-4 py-3">
-                        <ProfitCell value={course.finalProfit} />
-                      </td>
-                      <td className="px-4 py-3 hidden xl:table-cell text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {formatPercent(course.profitMarginPercent)}
+                        <ProfitCell value={course.profit} />
                       </td>
                       <td className="px-4 py-3 hidden xl:table-cell">
                         <StatusBadge status={course.courseStatus} />
                       </td>
                     </tr>
                     <AnimatePresence>
-                      {isExp && <CourseDetailRow course={course} colSpan={9} />}
+                      {isExp && <CourseDetailRow course={course} colSpan={8} />}
                     </AnimatePresence>
                   </Fragment>
                 );

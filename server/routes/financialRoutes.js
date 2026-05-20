@@ -462,19 +462,13 @@ router.get('/financial/export/csv', protect, authorize('admin'), async (req, res
       const data = await getAllCoursesFinancialSummary();
       headers = [
         { label: 'Course Name',         key: 'courseName'           },
-        { label: 'Type',                 key: 'courseType'           },
-        { label: 'Total Enrollments',    key: 'totalEnrollments'     },
-        { label: 'Paid',                 key: 'paidEnrollments'      },
-        { label: 'Free',                 key: 'freeEnrollments'      },
-        { label: 'Gross Revenue (INR)',  key: 'grossRevenue'         },
-        { label: 'Discounts',            key: 'totalDiscounts'       },
-        { label: 'Refunds',              key: 'totalRefunded'        },
-        { label: 'Net Revenue',          key: 'netRevenue'           },
-        { label: 'RP Expenses',          key: 'resourcePersonExpense'},
-        { label: 'Other Expenses',       key: 'otherExpenses'        },
-        { label: 'Total Expenses',       key: 'totalExpenses'        },
-        { label: 'Final Profit',         key: 'finalProfit'          },
-        { label: 'Margin %',             key: 'profitMarginPercent'  },
+        { label: 'Type',                key: 'courseType'           },
+        { label: 'Total Enrollments',   key: 'totalEnrollments'     },
+        { label: 'Paid',                key: 'paidEnrollments'      },
+        { label: 'Free',                key: 'freeEnrollments'      },
+        { label: 'Revenue (INR)',       key: 'revenue'              },
+        { label: 'Expenses (INR)',      key: 'expenses'             },
+        { label: 'Profit (INR)',        key: 'profit'               },
       ];
       rows     = data;
       filename = 'Financial_Summary.csv';
@@ -568,12 +562,9 @@ router.get('/financial/export/pdf', protect, authorize('admin'), async (req, res
     doc.fontSize(11).font('Helvetica');
     const fmt = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
     const tRows = [
-      ['Gross Revenue',    fmt(totals.totalGrossRevenue)],
-      ['Net Revenue',      fmt(totals.totalNetRevenue)],
+      ['Total Revenue',    fmt(totals.totalRevenue)],
       ['Total Expenses',   fmt(totals.totalExpenses)],
-      ['Final Profit',     fmt(totals.totalProfit)],
-      ['Total Refunds',    fmt(totals.totalRefunds)],
-      ['Average Margin',   `${totals.avgProfitMargin}%`],
+      ['Total Profit',     fmt(totals.totalProfit)],
       ['Total Courses',    String(totals.courseCount)],
     ];
     tRows.forEach(([label, value]) => {
@@ -593,7 +584,7 @@ router.get('/financial/export/pdf', protect, authorize('admin'), async (req, res
       doc.fontSize(9).font('Helvetica').fillColor('#6b7280')
         .text(`Type: ${course.courseType.toUpperCase()} | Status: ${course.courseStatus} | Enrollments: ${course.totalEnrollments}`);
       doc.fillColor('#111827')
-        .text(`Gross: ${fmt(course.grossRevenue)}  |  Expenses: ${fmt(course.totalExpenses)}  |  Profit: ${fmt(course.finalProfit)}  |  Margin: ${course.profitMarginPercent}%`);
+        .text(`Revenue: ${fmt(course.revenue)}  |  Expenses: ${fmt(course.expenses)}  |  Profit: ${fmt(course.profit)}`);
     });
 
     doc.end();

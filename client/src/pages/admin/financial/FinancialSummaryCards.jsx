@@ -1,8 +1,7 @@
 import { motion } from 'framer-motion';
 import {
   FiTrendingUp, FiTrendingDown, FiDollarSign,
-  FiPieChart, FiPercent, FiMinusCircle,
-  FiUsers, FiAlertCircle,
+  FiMinusCircle, FiUsers,
 } from 'react-icons/fi';
 import { cn } from '../../../lib/utils';
 
@@ -28,36 +27,14 @@ export const formatPercent = (value) => {
 
 const CARDS = [
   {
-    key: 'totalGrossRevenue',
-    label: 'Gross Revenue',
-    sublabel: 'Total cash received',
+    key: 'totalRevenue',
+    label: 'Total Revenue',
+    sublabel: 'All course earnings',
     icon: FiDollarSign,
     format: formatINR,
     gradient: 'from-emerald-500 to-teal-600',
     bg: 'bg-emerald-50 dark:bg-emerald-900/20',
     text: 'text-emerald-600 dark:text-emerald-400',
-  },
-  {
-    key: 'totalNetRevenue',
-    label: 'Net Revenue',
-    sublabel: 'After refunds',
-    icon: FiTrendingUp,
-    format: formatINR,
-    gradient: 'from-blue-500 to-indigo-600',
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    text: 'text-blue-600 dark:text-blue-400',
-    dynamic: true,
-  },
-  {
-    key: 'totalProfit',
-    label: 'Net Profit',
-    sublabel: 'Revenue − Expenses',
-    icon: FiTrendingUp,
-    format: formatINR,
-    gradient: 'from-violet-500 to-purple-600',
-    bg: 'bg-violet-50 dark:bg-violet-900/20',
-    text: 'text-violet-600 dark:text-violet-400',
-    dynamic: true,
   },
   {
     key: 'totalExpenses',
@@ -70,35 +47,15 @@ const CARDS = [
     text: 'text-amber-600 dark:text-amber-400',
   },
   {
-    key: 'totalRefunds',
-    label: 'Total Refunds',
-    sublabel: 'Returned to students',
-    icon: FiAlertCircle,
+    key: 'totalProfit',
+    label: 'Total Profit',
+    sublabel: 'Revenue − Expenses',
+    icon: FiTrendingUp,
     format: formatINR,
-    gradient: 'from-rose-500 to-red-600',
-    bg: 'bg-rose-50 dark:bg-rose-900/20',
-    text: 'text-rose-600 dark:text-rose-400',
-  },
-  {
-    key: 'avgProfitMargin',
-    label: 'Avg. Margin',
-    sublabel: 'Across all courses',
-    icon: FiPercent,
-    format: formatPercent,
-    gradient: 'from-cyan-500 to-sky-600',
-    bg: 'bg-cyan-50 dark:bg-cyan-900/20',
-    text: 'text-cyan-600 dark:text-cyan-400',
+    gradient: 'from-violet-500 to-purple-600',
+    bg: 'bg-violet-50 dark:bg-violet-900/20',
+    text: 'text-violet-600 dark:text-violet-400',
     dynamic: true,
-  },
-  {
-    key: 'totalDiscounts',
-    label: 'Discounts Given',
-    sublabel: 'Coupon savings',
-    icon: FiPieChart,
-    format: formatINR,
-    gradient: 'from-pink-500 to-fuchsia-600',
-    bg: 'bg-pink-50 dark:bg-pink-900/20',
-    text: 'text-pink-600 dark:text-pink-400',
   },
   {
     key: 'courseCount',
@@ -127,7 +84,7 @@ const FinancialSummaryCards = ({ data, loading }) => (
     variants={containerVariants}
     initial="hidden"
     animate="show"
-    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3"
+    className="grid grid-cols-2 sm:grid-cols-4 gap-3"
   >
     {CARDS.map((card) => {
       const raw    = data?.[card.key] ?? 0;

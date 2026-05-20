@@ -69,7 +69,6 @@ import certificateRoutes, { receiptsRouter, verifyRouter } from './routes/certif
 import feedbackRoutes from './routes/feedback.js';
 import couponRoutes from './routes/coupons.js';
 import certTemplateRoutes from './routes/certTemplates.js';
-
 // ── Mount Routers ──
 app.use('/api/auth', authRoutes);
 app.use('/api/courses', courseRoutes);

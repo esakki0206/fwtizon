@@ -5,8 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiCheckCircle, FiXCircle, FiDownload, FiEye,
   FiFileText, FiCreditCard, FiRefreshCw, FiSearch,
-  FiAlertCircle,
+  FiAlertCircle, FiPieChart, FiTrendingDown,
 } from 'react-icons/fi';
+
+// New Components
+import FinancialSummaryCards from './financial/FinancialSummaryCards';
+import CourseSummaryTable from './financial/CourseSummaryTable';
+import ExpenseManager from './financial/ExpenseManager';
 
 // ─── Authenticated PDF download (sends Bearer token via axios) ────────────────
 const downloadPdf = async (receiptId, type = 'download') => {
@@ -87,7 +92,7 @@ const SearchBar = ({ value, onChange, placeholder }) => (
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const PaymentManager = () => {
-  const [activeTab, setActiveTab] = useState('payments');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   // Payments tab
   const [payments, setPayments] = useState([]);
@@ -100,6 +105,28 @@ const PaymentManager = () => {
   const [receiptsLoading, setReceiptsLoading] = useState(false);
   const [receiptsError, setReceiptsError] = useState(null);
   const [receiptSearch, setReceiptSearch] = useState('');
+
+  // Finance tab
+  const [financePlatformData, setFinancePlatformData] = useState(null);
+  const [financeCoursesData, setFinanceCoursesData] = useState([]);
+  const [financeLoading, setFinanceLoading] = useState(true);
+
+  const fetchFinanceData = useCallback(async () => {
+    setFinanceLoading(true);
+    try {
+      const [platRes, coursesRes] = await Promise.all([
+        axios.get('/api/admin/financial/platform-summary'),
+        axios.get('/api/admin/financial/courses-summary')
+      ]);
+      setFinancePlatformData(platRes.data.data);
+      setFinanceCoursesData(coursesRes.data.data);
+    } catch (err) {
+      console.error('Failed to load finance data', err);
+      toast.error('Failed to load financial data');
+    } finally {
+      setFinanceLoading(false);
+    }
+  }, []);
 
   const fetchPayments = useCallback(async () => {
     setPaymentsLoading(true);
@@ -141,14 +168,14 @@ const PaymentManager = () => {
   }, []);
 
   useEffect(() => {
-    fetchPayments();
-  }, [fetchPayments]);
-
-  useEffect(() => {
-    if (activeTab === 'receipts' && receipts.length === 0 && !receiptsLoading && !receiptsError) {
+    if (activeTab === 'dashboard') {
+      fetchFinanceData();
+    } else if (activeTab === 'payments') {
+      fetchPayments();
+    } else if (activeTab === 'receipts' && receipts.length === 0 && !receiptsLoading && !receiptsError) {
       fetchReceipts();
     }
-  }, [activeTab, receipts.length, receiptsLoading, receiptsError, fetchReceipts]);
+  }, [activeTab, fetchFinanceData, fetchPayments, fetchReceipts, receipts.length, receiptsLoading, receiptsError]);
 
   // Filtered lists
   const filteredPayments = payments.filter((p) => {
@@ -174,24 +201,47 @@ const PaymentManager = () => {
   });
 
   const tabs = [
-    { key: 'payments', label: 'Payments', Icon: FiCreditCard },
+    { key: 'dashboard', label: 'Financial Summary', Icon: FiPieChart },
+    { key: 'expenses', label: 'Expenses', Icon: FiTrendingDown },
+    { key: 'payments', label: 'Student Payments', Icon: FiCreditCard },
     { key: 'receipts', label: 'Receipts', Icon: FiFileText },
   ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Page header */}
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
-          Payment Operations &amp; Receipts
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Track Razorpay transactions and download official payment receipts.
-        </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
+            Finance &amp; Payment Operations
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Track revenue, expenses, student payments, and manage official receipts.
+          </p>
+        </div>
+        
+        {activeTab === 'dashboard' && (
+           <div className="flex items-center gap-2">
+            <button 
+              onClick={fetchFinanceData}
+              className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition text-gray-600 dark:text-gray-300"
+            >
+              <FiRefreshCw size={16} className={financeLoading ? 'animate-spin' : ''} />
+            </button>
+            <a 
+              href="/api/admin/financial/export/pdf?type=courses-summary" 
+              target="_blank"
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg shadow-sm text-sm font-semibold transition"
+            >
+              <FiDownload size={16} />
+              Export PDF
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
+      <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 hide-scrollbar">
         {tabs.map(({ key, label, Icon }) => (
           <button
             key={key}
@@ -216,7 +266,37 @@ const PaymentManager = () => {
 
       {/* Tab content */}
       <AnimatePresence mode="wait">
-        {activeTab === 'payments' ? (
+        
+        {/* NEW DASHBOARD TAB */}
+        {activeTab === 'dashboard' && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-6"
+          >
+            <FinancialSummaryCards data={financePlatformData} loading={financeLoading} />
+            <CourseSummaryTable courses={financeCoursesData} loading={financeLoading} />
+          </motion.div>
+        )}
+
+        {/* NEW EXPENSES TAB */}
+        {activeTab === 'expenses' && (
+          <motion.div
+            key="expenses"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+          >
+            <ExpenseManager courses={financeCoursesData} />
+          </motion.div>
+        )}
+
+        {/* EXISTING PAYMENTS TAB */}
+        {activeTab === 'payments' && (
           <motion.div
             key="payments"
             initial={{ opacity: 0, y: 8 }}
@@ -291,7 +371,10 @@ const PaymentManager = () => {
               </tbody>
             </TableCard>
           </motion.div>
-        ) : (
+        )}
+
+        {/* EXISTING RECEIPTS TAB */}
+        {activeTab === 'receipts' && (
           <motion.div
             key="receipts"
             initial={{ opacity: 0, y: 8 }}
@@ -391,6 +474,7 @@ const PaymentManager = () => {
             </TableCard>
           </motion.div>
         )}
+
       </AnimatePresence>
     </div>
   );

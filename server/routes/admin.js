@@ -42,8 +42,11 @@ import {
   toggleCoupon,
   deleteCoupon,
 } from './couponController.js';
+import financialRoutes from './financialRoutes.js';
 
 const router = express.Router();
+
+router.use(financialRoutes);
 
 // ──────────────────────────────────────────────
 // Helpers

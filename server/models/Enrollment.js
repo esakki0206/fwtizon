@@ -89,13 +89,15 @@ enrollmentSchema.pre('validate', function () {
 // sparse:true on compound indexes does NOT behave as expected when one key (user)
 // is always present — it would still index rows where course/liveCourse is null,
 // causing false duplicate-key errors across unrelated enrollments.
+// $type:'objectId' is used instead of $ne:null because $ne is not supported
+// inside partialFilterExpression on MongoDB Atlas versions before 7.0.
 enrollmentSchema.index(
   { user: 1, course: 1 },
-  { unique: true, partialFilterExpression: { course: { $exists: true, $ne: null } } }
+  { unique: true, partialFilterExpression: { course: { $type: 'objectId' } } }
 );
 enrollmentSchema.index(
   { user: 1, liveCourse: 1 },
-  { unique: true, partialFilterExpression: { liveCourse: { $exists: true, $ne: null } } }
+  { unique: true, partialFilterExpression: { liveCourse: { $type: 'objectId' } } }
 );
 
 const Enrollment = mongoose.model('Enrollment', enrollmentSchema);

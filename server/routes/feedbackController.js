@@ -1147,11 +1147,40 @@ export const submitFeedback = async (req, res) => {
       }
     } catch (certError) {
       console.error('Auto-certificate generation failed after feedback submission:', certError);
-      await FeedbackSubmission.deleteOne({ _id: submission._id });
-      return res.status(500).json({
-        success: false,
-        message: 'Feedback could not be submitted because certificate generation failed. Please try again.',
-      });
+
+      // If the failure is a duplicate-key error on the certificates collection it means
+      // a certificate already exists for this user+course pair (e.g. race condition or
+      // stale DB state). This is recoverable: fetch the existing certificate and return
+      // it as if generation succeeded — the submission is valid and should NOT be rolled back.
+      if (certError.code === 11000 && certError.message && certError.message.includes('certificates')) {
+        try {
+          const fallbackCert = await Certificate.findOne({
+            user: req.user.id,
+            $or: [
+              ...(courseObj._id ? [{ liveCourse: courseObj._id }, { course: courseObj._id }] : []),
+            ],
+          }).select('certificateId certificateType');
+
+          if (fallbackCert) {
+            certificateData = {
+              certificateId: fallbackCert.certificateId,
+              certificateType: fallbackCert.certificateType || 'Completion Certificate',
+              downloadUrl: `/api/certificates/${fallbackCert.certificateId}/download`,
+              viewUrl: `/api/certificates/${fallbackCert.certificateId}/view`,
+            };
+          }
+        } catch (fallbackErr) {
+          console.error('Failed to fetch fallback certificate after duplicate key error:', fallbackErr);
+        }
+      } else {
+        // Genuine certificate generation failure — roll back the submission so the
+        // user can retry (the form will not be marked as already-submitted).
+        await FeedbackSubmission.deleteOne({ _id: submission._id });
+        return res.status(500).json({
+          success: false,
+          message: 'Feedback could not be submitted because certificate generation failed. Please try again.',
+        });
+      }
     }
 
     res.status(201).json({

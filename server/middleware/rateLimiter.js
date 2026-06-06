@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 // ─────────────────────────────────────────────────
 // KEY GENERATORS
@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit';
  * Falls back to IP when no identifier is present (shouldn't happen
  * for well-formed login/register requests).
  */
-const authKeyGenerator = (req) => {
+const authKeyGenerator = (req, res) => {
   const email = req.body?.email;
   if (email) {
     return `auth:${email.toLowerCase().trim()}`;
@@ -19,10 +19,10 @@ const authKeyGenerator = (req) => {
   // (the token changes each time so it can't be used as a key)
   const credential = req.body?.credential;
   if (credential) {
-    return `auth:google:${req.ip}`;
+    return `auth:google:${ipKeyGenerator(req.ip)}`;
   }
 
-  return `auth:ip:${req.ip}`;
+  return `auth:ip:${ipKeyGenerator(req.ip)}`;
 };
 
 /**
@@ -30,11 +30,11 @@ const authKeyGenerator = (req) => {
  * Falls back to IP if somehow unauthenticated (shouldn't happen
  * since payment routes use `protect` middleware).
  */
-const userKeyGenerator = (req) => {
+const userKeyGenerator = (req, res) => {
   if (req.user?.id) {
     return `user:${req.user.id}`;
   }
-  return `ip:${req.ip}`;
+  return `ip:${ipKeyGenerator(req.ip)}`;
 };
 
 // ─────────────────────────────────────────────────

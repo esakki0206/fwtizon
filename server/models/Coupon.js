@@ -80,7 +80,6 @@ const couponSchema = new mongoose.Schema(
 );
 
 // ── Indexes ──────────────────────────────────────────────────────────────────
-couponSchema.index({ code: 1 });                  // fast code lookup
 couponSchema.index({ expiryDate: 1 });             // expiry queries
 couponSchema.index({ isActive: 1, expiryDate: 1 }); // active + not-expired compound
 

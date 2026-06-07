@@ -6,11 +6,10 @@ import Course from '../models/Course.js';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
 import { protect, authorize, optionalAuth } from '../middleware/auth.js';
-// Use uploadImage (image-optimized: auto quality, auto format, max 1200px)
-// NOT the generic `upload` which is for files/videos and skips image transforms.
 import { uploadImage } from '../config/cloudinary.js';
 
 const router = express.Router();
+const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
 // ======================
 // UPLOAD IMAGE
@@ -59,10 +58,42 @@ router.get('/reviews/course/:courseId', async (req, res) => {
 
 router.post('/reviews', protect, async (req, res) => {
   try {
-    req.body.user = req.user.id;
-    const review = await Review.create(req.body);
+    // Whitelist fields — never pass req.body directly to Model.create()
+    // as it would allow injection of any field (user override, rating manipulation, etc.)
+    const { courseId, rating, comment } = req.body;
+
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(400).json({ success: false, message: 'Valid courseId is required' });
+    }
+    const ratingNum = Number(rating);
+    if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+    if (comment && String(comment).length > 2000) {
+      return res.status(400).json({ success: false, message: 'Review comment must be 2000 characters or fewer' });
+    }
+
+    // Check enrollment — only enrolled students can leave reviews
+    const enrollment = await Enrollment.findOne({
+      user: req.user.id,
+      course: courseId,
+      status: { $in: ['active', 'completed'] },
+    });
+    if (!enrollment) {
+      return res.status(403).json({ success: false, message: 'You must be enrolled in this course to leave a review' });
+    }
+
+    const review = await Review.create({
+      course: courseId,
+      user: req.user.id,
+      rating: ratingNum,
+      comment: comment ? String(comment).trim() : '',
+    });
     res.status(201).json({ success: true, data: review });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, message: 'You have already reviewed this course' });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -121,8 +152,15 @@ router.get('/notifications', protect, async (req, res) => {
 
 router.put('/notifications/:id/read', protect, async (req, res) => {
   try {
-    const notification = await Notification.findByIdAndUpdate(req.params.id, { isRead: true }, { new: true });
-    res.status(200).json({ success: true, data: notification });
+    // Scope the update to the authenticated user — prevents one user from
+    // marking another user’s notifications as read.
+    const notif = await Notification.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.id },
+      { isRead: true },
+      { new: true }
+    );
+    if (!notif) return res.status(404).json({ success: false, message: 'Notification not found' });
+    res.status(200).json({ success: true, data: notif });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -609,19 +609,25 @@ const CourseDetail = () => {
                   </Button>
                 ) : isEnrolled ? (
                   <>
+                    {/* ── Enrolled badge ── */}
+                    <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500 flex-shrink-0">
+                        <FiCheck className="text-white" size={13} />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-green-700 dark:text-green-400 leading-tight">You're enrolled</p>
+                        <p className="text-xs text-green-600/70 dark:text-green-500/70 mt-0.5">Full course access unlocked</p>
+                      </div>
+                    </div>
+
+                    {/* ── Go to Course CTA ── */}
                     <Button
-                      disabled
+                      onClick={() => navigate(`/learn/${course.slug || course._id}`)}
                       size="lg"
-                      className="w-full h-12 rounded-xl font-bold text-sm mb-3 bg-green-500 text-white opacity-100 cursor-default"
+                      className="w-full h-12 rounded-xl font-bold text-sm shadow-lg shadow-primary-600/20 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 transition-all active:scale-[0.98] mb-3"
                     >
-                      <FiCheck className="mr-2" size={16} /> Enrolled
+                      <FiPlay className="mr-2 fill-current" size={15} /> Go to Course
                     </Button>
-                    <button
-                      onClick={() => navigate('/dashboard')}
-                      className="w-full mb-4 py-2 text-sm text-gray-500 dark:text-gray-400 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition"
-                    >
-                      Go to Dashboard →
-                    </button>
                   </>
                 ) : eligibleForFree ? (
                   <>

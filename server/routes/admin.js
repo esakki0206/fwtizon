@@ -741,33 +741,58 @@ router.post('/announcements', protect, authorize('admin'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide both title and message' });
     }
 
+    // Enforce reasonable size limits to prevent abuse
+    if (String(title).length > 200) {
+      return res.status(400).json({ success: false, message: 'Title must be 200 characters or fewer' });
+    }
+    if (String(message).length > 5000) {
+      return res.status(400).json({ success: false, message: 'Message must be 5000 characters or fewer' });
+    }
+
+    // Escape HTML entities to prevent XSS in email bodies
+    const escapeHtml = (str) =>
+      String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const safeTitle   = escapeHtml(title);
+    const safeMessage = escapeHtml(message);
+
     const students = await User.find({ role: { $ne: 'admin' }, status: { $ne: 'suspended' } }).select('_id email');
     
     if (postToDashboard) {
       const notifications = students.map(student => ({
         user: student._id,
         type: 'system',
-        message: `${title}: ${message}`,
+        message: `${safeTitle}: ${safeMessage}`,
       }));
       await Notification.insertMany(notifications);
     }
     
     if (sendEmailAlert) {
-      // Send email to all students.
-      for (const student of students) {
-         try {
-            await sendEmail({
+      // Send emails in parallel batches of 20 to avoid blocking the event loop
+      // for hundreds/thousands of students while still being reasonably fast.
+      const BATCH_SIZE = 20;
+      for (let i = 0; i < students.length; i += BATCH_SIZE) {
+        const batch = students.slice(i, i + BATCH_SIZE);
+        await Promise.allSettled(
+          batch.map(student =>
+            sendEmail({
               email: student.email,
-              subject: `Platform Announcement: ${title}`,
-              html: `<h2>${title}</h2><p>${message}</p>`,
-            });
-         } catch (err) {
-            console.error(`Failed to send email to ${student.email}:`, err.message);
-         }
+              subject: `Platform Announcement: ${safeTitle}`,
+              html: `<h2>${safeTitle}</h2><p>${safeMessage}</p>`,
+            }).catch(err => {
+              console.error(`Failed to send announcement email to ${student.email}:`, err.message);
+            })
+          )
+        );
       }
     }
     
-    res.status(200).json({ success: true, message: `Announcement sent successfully to ${students.length} students.` });
+    res.status(200).json({ success: true, message: `Announcement sent to ${students.length} students.` });
   } catch (error) {
     console.error('Announcement broadcast error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -1265,19 +1290,37 @@ router.post('/students/:id/reset-password', protect, authorize('admin'), async (
     // Bypass pre-save hash since we already hashed
     await student.save({ validateBeforeSave: false });
 
-    // Notify the student in-app
+    // Email the temporary password to the student — never return it in the API
+    // response body, as that would expose it to any XSS or MITM on the admin session.
+    let emailSent = false;
+    try {
+      await sendEmail({
+        email: student.email,
+        subject: 'Fwtion — Your Password Has Been Reset',
+        html: `<p>An administrator has reset your account password.</p>
+               <p>Your temporary password is: <strong>${tempPassword}</strong></p>
+               <p>Please log in and change your password immediately.</p>`,
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('Failed to email temp password to student:', emailErr.message);
+    }
+
+    // Notify student in-app
     try {
       await Notification.create({
         user: student._id,
         type: 'system',
-        message: 'An administrator has reset your password. Please log in and update it immediately.',
+        message: 'An administrator has reset your password. Please check your email and update it immediately.',
       });
     } catch (_) { /* non-fatal */ }
 
     res.status(200).json({
       success: true,
-      message: 'Temporary password generated',
-      data: { tempPassword },
+      message: emailSent
+        ? 'Password reset. Temporary password sent to student’s email.'
+        : 'Password reset, but the email could not be sent. Please inform the student manually.',
+      emailSent,
     });
   } catch (error) {
     console.error('Reset password error:', error);
@@ -1686,7 +1729,41 @@ router.get('/certificates', protect, authorize('admin'), async (req, res) => {
 
 router.post('/certificates', protect, authorize('admin'), async (req, res) => {
   try {
-    const certificate = await Certificate.create(req.body);
+    // Whitelist only the fields an admin should be able to set directly.
+    // Never pass req.body directly to Certificate.create() — that allows
+    // injection of any field including user, fileUrl, certificateId etc.
+    const {
+      certificateId, user, course, liveCourse, studentName, studentEmail,
+      courseName, domain, areaOfExpertise, issueDate, completionDate,
+      certificateType, status, enrollment, type,
+    } = req.body;
+
+    if (!certificateId || !user || !studentName || !studentEmail || !courseName) {
+      return res.status(400).json({
+        success: false,
+        message: 'certificateId, user, studentName, studentEmail, and courseName are required',
+      });
+    }
+
+    const certificate = await Certificate.create({
+      certificateId,
+      user,
+      course: course || undefined,
+      liveCourse: liveCourse || undefined,
+      studentName,
+      studentEmail,
+      courseName,
+      domain,
+      areaOfExpertise,
+      issueDate: issueDate || new Date(),
+      completionDate,
+      certificateType: certificateType || 'Completion Certificate',
+      status: status || 'Issued',
+      enrollment: enrollment || undefined,
+      type: type || 'COURSE',
+      // fileUrl is required by schema — caller must include it
+      fileUrl: req.body.fileUrl,
+    });
     res.status(201).json({ success: true, data: certificate });
   } catch (error) {
     if (error.code === 11000) {

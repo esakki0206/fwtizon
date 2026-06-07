@@ -250,8 +250,24 @@ export const refreshAccessToken = async (req, res, next) => {
       throw new Error('Your account has been suspended');
     }
 
-    // Issue new access token
-    const newAccessToken = user.getSignedJwtToken();
+    // ── Refresh token rotation ─────────────────────────────────────────────────────────────────
+    // Issue a NEW refresh token on every use and invalidate the old one.
+    // This means a stolen refresh token can only be used once before it’s
+    // rotated away — any subsequent use by the attacker will fail because
+    // user.refreshToken no longer matches.
+    const newAccessToken  = user.getSignedJwtToken();
+    const newRefreshToken = user.getRefreshToken();
+
+    user.refreshToken = newRefreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const refreshOptions = {
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/api/auth/refresh-token',
+      secure: process.env.NODE_ENV === 'production',
+    };
 
     res
       .status(200)
@@ -261,6 +277,7 @@ export const refreshAccessToken = async (req, res, next) => {
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
       })
+      .cookie('refreshToken', newRefreshToken, refreshOptions)
       .json({
         success: true,
         token: newAccessToken,
@@ -319,14 +336,16 @@ export const logout = async (req, res, next) => {
 export const forgotPassword = async (req, res, next) => {
   try {
     const user = await User.findOne({ email: req.body.email });
+
+    // Always return 200 regardless of whether the email exists.
+    // Returning 404 leaks which email addresses are registered (user enumeration).
     if (!user) {
-      res.status(404);
-      throw new Error('No user found with that email');
+      return res.status(200).json({ success: true, data: 'If that email is registered, a reset link has been sent' });
     }
 
     if (user.googleId && !user.password) {
-      res.status(400);
-      throw new Error('This account uses Google sign-in. Please log in with Google.');
+      // Still return 200 to avoid leaking account type
+      return res.status(200).json({ success: true, data: 'If that email is registered, a reset link has been sent' });
     }
 
     const resetToken = user.getResetPasswordToken();
@@ -401,9 +420,22 @@ export const resetPassword = async (req, res, next) => {
 export const updateDetails = async (req, res, next) => {
   try {
     const fieldsToUpdate = {};
-    if (req.body.name) fieldsToUpdate.name = req.body.name;
-    if (req.body.email) fieldsToUpdate.email = req.body.email;
+    if (req.body.name) fieldsToUpdate.name = req.body.name.trim();
     if (req.body.avatar) fieldsToUpdate.avatar = req.body.avatar;
+
+    // Email changes require a uniqueness check to prevent collisions
+    if (req.body.email) {
+      const newEmail = req.body.email.trim().toLowerCase();
+      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,})+$/;
+      if (!emailRegex.test(newEmail)) {
+        return res.status(400).json({ success: false, message: 'Invalid email address' });
+      }
+      const existing = await User.findOne({ email: newEmail, _id: { $ne: req.user.id } });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'That email address is already in use' });
+      }
+      fieldsToUpdate.email = newEmail;
+    }
 
     const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
       new: true,

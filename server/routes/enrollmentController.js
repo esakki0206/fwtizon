@@ -293,24 +293,14 @@ export const enrollUserInCourse = async ({
     }
   }
 
-  // 4. Update Course Enrollment Count (atomic — avoids triggering pre-save hooks)
+  // 4. Update Course Enrollment Count atomically using $inc.
+  // Using $set: actualCount+1 has a race condition: two simultaneous enrollments
+  // both read the same count and both set the same +1 value, losing one increment.
+  // $inc is atomic at the MongoDB level — no read-modify-write race.
   if (liveCourseId) {
-    const actualCount = await Enrollment.countDocuments({
-      liveCourse: liveCourseId,
-      status: { $in: ['active', 'completed'] }
-    });
-    // +1 because the new enrollment hasn't been created yet
-    await LiveCourse.findByIdAndUpdate(liveCourseId, {
-      $set: { currentEnrollments: actualCount + 1 }
-    });
+    await LiveCourse.findByIdAndUpdate(liveCourseId, { $inc: { currentEnrollments: 1 } });
   } else if (courseId) {
-    const actualCount = await Enrollment.countDocuments({
-      course: courseId,
-      status: { $in: ['active', 'completed'] }
-    });
-    await Course.findByIdAndUpdate(courseId, {
-      $set: { enrollmentCount: actualCount + 1 }
-    });
+    await Course.findByIdAndUpdate(courseId, { $inc: { enrollmentCount: 1 } });
   }
 
   // 5. Increment Coupon Usage (atomic)

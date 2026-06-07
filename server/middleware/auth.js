@@ -15,9 +15,10 @@ export const protect = async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   } else if (req.cookies?.token) {
     token = req.cookies.token;
-  } else if (req.query?.token) {
-    token = req.query.token;
   }
+  // NOTE: Intentionally NOT accepting tokens from query strings.
+  // Query-string tokens appear in server logs, browser history, and Referrer
+  // headers — any one of those leaks grants full account access.
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized — no token provided' });
@@ -74,8 +75,6 @@ export const optionalAuth = async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   } else if (req.cookies?.token) {
     token = req.cookies.token;
-  } else if (req.query?.token) {
-    token = req.query.token;
   }
 
   if (!token) {

@@ -4,11 +4,14 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Environment variables
+# Environment variables — NEVER commit these
 .env
 .env.local
 .env.*.local
+.env.production
 .env.production.local
+.env.development
+.env.staging
 
 # Build outputs
 dist/
@@ -50,10 +53,23 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Temporary files
+# Temporary / scratch files — development only, never deployed
 tmp/
 temp/
 *.tmp
+scratch.js
+scratch2.js
+scratch/
+
+# Test files and generated test PDFs — not needed in production
+test_*.js
+test_*.pdf
+tests/
+calibrate.js
+calibrate_certificate.pdf
+calibrate_receipt.pdf
+check_dims.js
+fix-indexes.js
 
 # Testing
 jest.config.js
@@ -77,3 +93,6 @@ debugOutput/
 
 # Node.js
 *.code-workspace
+
+# Generated PDFs uploaded during development
+*.pdf

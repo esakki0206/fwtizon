@@ -2,9 +2,6 @@ import Course from '../models/Course.js';
 import Enrollment from '../models/Enrollment.js';
 
 // ─── Helper ────────────────────────────────────────────────────────────────
-// Merges course's optional display overrides with the populated User data so
-// the frontend always gets a single consistent { name, photo } no matter how
-// the course was configured.
 const attachDisplayInstructor = (course) => {
   const obj = course.toObject ? course.toObject() : { ...course };
   obj.displayInstructorName =
@@ -23,52 +20,54 @@ const attachDisplayInstructor = (course) => {
 // @access  Public
 export const getCourses = async (req, res) => {
   try {
-    const reqQuery = { ...req.query };
-    const removeFields = ['select', 'sort', 'page', 'limit', 'keyword'];
-    removeFields.forEach(param => delete reqQuery[param]);
+    // Build a safe, whitelisted filter instead of passing req.query directly
+    // to Mongoose. Passing arbitrary query params enables NoSQL injection
+    // (e.g. ?price[$gt]=0 bypasses price filter, ?status=hidden exposes drafts).
+    const filter = { status: 'published' };
 
-    let queryStr = JSON.stringify(reqQuery);
-    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
-
-    let query = Course.find(JSON.parse(queryStr)).populate({
-      path: 'instructor',
-      select: 'name avatar',
-    });
-
-    if (req.query.keyword) {
-      query = query.find({
-        title: { $regex: req.query.keyword, $options: 'i' },
-      });
+    // Category filter
+    if (req.query.category && typeof req.query.category === 'string') {
+      filter.category = req.query.category;
     }
 
-    // Public route: only published courses
-    query = query.where({ status: 'published' });
-
-    if (req.query.select) {
-      const fields = req.query.select.split(',').join(' ');
-      query = query.select(fields);
+    // Price range (explicit numeric parsing — never trust raw query string operators)
+    if (req.query.minPrice !== undefined || req.query.maxPrice !== undefined) {
+      filter.price = {};
+      const min = parseFloat(req.query.minPrice);
+      const max = parseFloat(req.query.maxPrice);
+      if (!isNaN(min)) filter.price.$gte = min;
+      if (!isNaN(max)) filter.price.$lte = max;
+      if (!Object.keys(filter.price).length) delete filter.price;
     }
 
-    if (req.query.sort) {
-      const sortBy = req.query.sort.split(',').join(' ');
-      query = query.sort(sortBy);
-    } else {
-      query = query.sort('-createdAt');
+    // Keyword search — escape regex special chars to prevent ReDoS
+    if (req.query.keyword && typeof req.query.keyword === 'string') {
+      const escaped = req.query.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.title = { $regex: escaped, $options: 'i' };
     }
 
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    let query = Course.find(filter).populate({ path: 'instructor', select: 'name avatar' });
+
+    // Sort — whitelist allowed fields only to prevent arbitrary field exposure
+    const SORT_WHITELIST = {
+      'price': 'price', '-price': '-price',
+      'createdAt': 'createdAt', '-createdAt': '-createdAt',
+      'title': 'title', '-title': '-title',
+    };
+    const sortBy = SORT_WHITELIST[req.query.sort] || '-createdAt';
+    query = query.sort(sortBy);
+
+    const page  = Math.max(parseInt(req.query.page,  10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
     const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const total = await Course.countDocuments({ status: 'published' });
+    const total = await Course.countDocuments(filter);
 
     query = query.skip(startIndex).limit(limit);
-
     const courses = await query;
 
     const pagination = {};
-    if (endIndex < total) pagination.next = { page: page + 1, limit };
-    if (startIndex > 0) pagination.prev = { page: page - 1, limit };
+    if (startIndex + limit < total) pagination.next = { page: page + 1, limit };
+    if (startIndex > 0)             pagination.prev = { page: page - 1, limit };
 
     res.status(200).json({
       success: true,
@@ -142,7 +141,7 @@ export const getCourseContent = async (req, res) => {
         select: 'title order lessons quiz',
         populate: {
           path: 'lessons',
-          // Get all fields including content, zoomEmbedLink, zoomPassword
+          // All fields including content, zoomEmbedLink, zoomPassword
         },
       });
 
@@ -159,7 +158,7 @@ export const getCourseContent = async (req, res) => {
     res.status(200).json({
       success: true,
       data: attachDisplayInstructor(course),
-      progress: req.enrollment ? req.enrollment.progress : null
+      progress: req.enrollment ? req.enrollment.progress : null,
     });
   } catch (error) {
     console.error('getCourseContent error:', error);
@@ -174,17 +173,13 @@ export const createCourse = async (req, res) => {
   try {
     req.body.instructor = req.user.id;
 
-    // Normalise status to lowercase so DB validation passes
     if (req.body.status) {
       req.body.status = req.body.status.toLowerCase();
     }
 
     const course = await Course.create(req.body);
 
-    res.status(201).json({
-      success: true,
-      data: course,
-    });
+    res.status(201).json({ success: true, data: course });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -208,17 +203,14 @@ export const updateCourse = async (req, res) => {
       });
     }
 
-    // Normalise status to lowercase so DB validation passes
     if (req.body.status) {
       req.body.status = req.body.status.toLowerCase();
     }
 
-    // Validate price is non-negative when provided
     if (req.body.price !== undefined && req.body.price < 0) {
       return res.status(400).json({ success: false, message: 'Price cannot be negative' });
     }
 
-    // Validate instructorName when provided
     if (req.body.instructorName !== undefined && req.body.instructorName.trim() === '') {
       return res.status(400).json({ success: false, message: 'Instructor name cannot be empty' });
     }
@@ -228,10 +220,7 @@ export const updateCourse = async (req, res) => {
       runValidators: true,
     }).populate({ path: 'instructor', select: 'name avatar' });
 
-    res.status(200).json({
-      success: true,
-      data: attachDisplayInstructor(course),
-    });
+    res.status(200).json({ success: true, data: attachDisplayInstructor(course) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -257,10 +246,7 @@ export const deleteCourse = async (req, res) => {
 
     await course.deleteOne();
 
-    res.status(200).json({
-      success: true,
-      data: {},
-    });
+    res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
